@@ -1,5 +1,10 @@
 #[derive(Debug)]
 pub enum Token<'a> {
+    Number(f64),
+    StringLiteral(&'a str),
+    Identifier(&'a str),
+    Let,
+    Semicolon,
     Plus,
     Minus,
     Star,
@@ -18,9 +23,6 @@ pub enum Token<'a> {
     RightBracket,
     LeftBrace,
     RightBrace,
-    Number(f64),
-    StringLiteral(&'a str),
-    Identifier(&'a str),
 }
 
 pub struct Lexer<'a> {
@@ -57,11 +59,15 @@ impl<'a> Iterator for Lexer<'a> {
             let s = self.advance_while(|c| c.is_numeric());
             s.parse::<f64>().ok().map(|x| Token::Number(x))
         } else if c.is_alphabetic() {
+            if self.unread[..3] == *"let" {
+                return Some(Token::Let)
+            }
             let s = self.advance_while(|c| c.is_alphanumeric());
             Some(Token::Identifier(s))
         } else {
             self.unread = &self.unread[1..];
             match c {
+                ';' => Some(Token::Semicolon),
                 '"' => {
                     let s = self.advance_while(|c| *c != '"');
                     self.unread = &self.unread[1..]; // Skip trailing quotes
