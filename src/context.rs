@@ -6,12 +6,12 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt::{self, Display, Formatter};
 
-struct Scope<'a> {
-    values: HashMap<&'a str, Value>,
-    parent: Option<Box<Scope<'a>>>,
+struct Scope {
+    values: HashMap<String, Value>,
+    parent: Option<Box<Scope>>,
 }
 
-impl<'a> Scope<'a> {
+impl Scope {
     fn new() -> Self {
         Scope {
             values: HashMap::new(),
@@ -19,23 +19,23 @@ impl<'a> Scope<'a> {
         }
     }
 
-    fn define(&mut self, name: &'a str, val: Value) {
+    fn define(&mut self, name: String, val: Value) {
         self.values.insert(name, val);
     }
 
-    fn get(&self, name: &'a str) -> Option<&Value> {
+    fn get(&self, name: &str) -> Option<&Value> {
         self.values
             .get(name)
             .or_else(|| self.parent.as_ref().and_then(|p| p.get(name)))
     }
 
-    fn get_mut(&mut self, name: &'a str) -> Option<&mut Value> {
+    fn get_mut(&mut self, name: &str) -> Option<&mut Value> {
         self.values
             .get_mut(name)
             .or({ self.parent.as_mut().and_then(|p| p.get_mut(name)) })
     }
 
-    fn begin_scope(self, mut scope: Scope<'a>) -> Self {
+    fn begin_scope(self, mut scope: Scope) -> Self {
         scope.parent = Some(Box::new(self));
         scope
     }
@@ -46,12 +46,12 @@ impl<'a> Scope<'a> {
 }
 
 #[derive(Debug)]
-pub enum InterpretError <'a> {
+pub enum InterpretError<'a> {
     Value(ValueError),
     VarNotFound(&'a str),
 }
 
-impl<'a> Display for InterpretError <'a> {
+impl<'a> Display for InterpretError<'a> {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
             InterpretError::Value(err) => write!(f, "{}", err),
@@ -60,25 +60,25 @@ impl<'a> Display for InterpretError <'a> {
     }
 }
 
-impl<'a> From<ValueError> for InterpretError <'a> {
+impl<'a> From<ValueError> for InterpretError<'a> {
     fn from(e: ValueError) -> Self {
         InterpretError::Value(e)
     }
 }
 
-pub struct Interpreter<'a> {
-    env: Scope<'a>,
+pub struct Interpreter {
+    env: Scope,
 }
 
-impl<'a> Interpreter<'a> {
-    pub fn new() -> Interpreter<'a> {
+impl Interpreter {
+    pub fn new() -> Interpreter {
         Interpreter { env: Scope::new() }
     }
 
-    pub fn statement(&mut self, stmt: Statement<'a>) -> Result<(), InterpretError<'a>> {
+    pub fn statement<'a>(&mut self, stmt: Statement<'a>) -> Result<(), InterpretError<'a>> {
         match stmt {
             Statement::VarDecl(name, init) => Ok({
-                self.env.define(name, self.evaluate(init)?);
+                self.env.define(name.to_string(), self.evaluate(init)?);
             }),
             Statement::Expression(expr) => Ok({
                 self.evaluate(expr)?;
@@ -86,7 +86,7 @@ impl<'a> Interpreter<'a> {
         }
     }
 
-    pub fn evaluate(&self, ex: Expression<'a>) -> Result<Value, InterpretError<'a>> {
+    pub fn evaluate<'a>(&self, ex: Expression<'a>) -> Result<Value, InterpretError<'a>> {
         let cvterr = |e| InterpretError::from(e);
         match ex {
             Expression::Literal(x) => Ok(x),

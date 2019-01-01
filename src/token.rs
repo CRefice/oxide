@@ -64,6 +64,8 @@ impl<'a> Iterator for Lexer<'a> {
             let s = self.advance_while(|c| c.is_alphanumeric());
             match s {
                 "let" => Some(Token::Let),
+                "true" => Some(Token::Bool(true)),
+                "false" => Some(Token::Bool(false)),
                 _ => Some(Token::Identifier(s))
             }
         } else {

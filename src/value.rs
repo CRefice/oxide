@@ -5,7 +5,6 @@ use std::ops::*;
 
 #[derive(Debug, Clone)]
 pub enum Value {
-    Void,
     Num(f64),
     Bool(bool),
     Str(String),
@@ -14,7 +13,6 @@ pub enum Value {
 impl Display for Value {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
-            Value::Void => write!(f, "void"),
             Value::Num(x) => write!(f, "{}", x),
             Value::Str(s) => write!(f, "{}", s),
             Value::Bool(b) => write!(f, "{}", b),

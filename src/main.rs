@@ -8,12 +8,12 @@ mod value;
 use std::io;
 
 fn main() {
+    let mut context = context::Interpreter::new();
     loop {
         let mut input = String::new();
         io::stdin().read_line(&mut input).unwrap();
         let lexer = token::Lexer::new(&input);
         let mut parser = parse::Parser::new(lexer.clone());
-        let mut context = context::Interpreter::new();
         match parser.declaration() {
             Ok(stmt) => {
                 match context.statement(stmt) {
