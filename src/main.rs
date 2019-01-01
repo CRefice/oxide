@@ -1,4 +1,4 @@
-mod context;
+mod interpreter;
 mod expr;
 mod parse;
 mod stmt;
@@ -6,9 +6,10 @@ mod token;
 mod value;
 
 use std::io;
+use crate::interpreter::Interpreter;
 
 fn main() {
-    let mut context = context::Interpreter::new();
+    let mut interp = Interpreter::new();
     loop {
         let mut input = String::new();
         io::stdin().read_line(&mut input).unwrap();
@@ -16,7 +17,7 @@ fn main() {
         let mut parser = parse::Parser::new(lexer.clone());
         match parser.declaration() {
             Ok(stmt) => {
-                match context.statement(stmt) {
+                match interp.statement(stmt) {
                     Ok(_) => (),
                     Err(err) => println!("{}", err),
                 }
@@ -25,7 +26,7 @@ fn main() {
                 let mut parser = parse::Parser::new(lexer);
                 match parser.expression() {
                     Ok(expr) => {
-                        match context.evaluate(expr) {
+                        match interp.evaluate(expr) {
                             Ok(val) => println!("{}", val),
                             Err(err) => println!("{}", err),
                         }
