@@ -1,8 +1,9 @@
-mod token;
-mod expr;
-mod value;
-mod parse;
 mod context;
+mod expr;
+mod parse;
+mod stmt;
+mod token;
+mod value;
 
 use std::io;
 
@@ -11,12 +12,30 @@ fn main() {
         let mut input = String::new();
         io::stdin().read_line(&mut input).unwrap();
         let lexer = token::Lexer::new(&input);
-        let mut context = context::Context::new();
-        let mut parser = parse::Parser::new(lexer);
-        let expr = parser.expression();
-        match context.evaluate(expr) {
-            Ok(val) => println!("{}", val),
-            Err(err) => println!("{}", err)
+        let mut parser = parse::Parser::new(lexer.clone());
+        let mut context = context::Interpreter::new();
+        match parser.declaration() {
+            Ok(stmt) => {
+                match context.statement(stmt) {
+                    Ok(_) => (),
+                    Err(err) => println!("{}", err),
+                }
+            }
+            Err(err) => {
+                let mut parser = parse::Parser::new(lexer);
+                match parser.expression() {
+                    Ok(expr) => {
+                        match context.evaluate(expr) {
+                            Ok(val) => println!("{}", val),
+                            Err(err) => println!("{}", err),
+                        }
+                    }
+                    Err(err2) => {
+                        println!("Error parsing statement: {}", err);
+                        println!("Error parsing expression: {}", err2);
+                    }
+                }
+            }
         }
     }
 }

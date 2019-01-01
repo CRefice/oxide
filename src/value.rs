@@ -3,7 +3,7 @@ use std::cmp::*;
 use std::fmt::{self, Display, Formatter};
 use std::ops::*;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Value {
     Void,
     Num(f64),

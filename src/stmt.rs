@@ -1,7 +1,7 @@
 use crate::expr;
-use crate::value::Value;
 
-enum Statement <'a> {
-    Expression(expr::Expression),
-    VarDecl(&'a str, Value)
+#[derive(Debug)]
+pub enum Statement <'a> {
+    VarDecl(&'a str, expr::Expression <'a>),
+    Expression(expr::Expression<'a>),
 }

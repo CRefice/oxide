@@ -1,6 +1,7 @@
 #[derive(Debug)]
 pub enum Token<'a> {
     Number(f64),
+    Bool(bool),
     StringLiteral(&'a str),
     Identifier(&'a str),
     Let,
@@ -25,6 +26,7 @@ pub enum Token<'a> {
     RightBrace,
 }
 
+#[derive(Clone)]
 pub struct Lexer<'a> {
     unread: &'a str,
 }
@@ -59,11 +61,11 @@ impl<'a> Iterator for Lexer<'a> {
             let s = self.advance_while(|c| c.is_numeric());
             s.parse::<f64>().ok().map(|x| Token::Number(x))
         } else if c.is_alphabetic() {
-            if self.unread[..3] == *"let" {
-                return Some(Token::Let)
-            }
             let s = self.advance_while(|c| c.is_alphanumeric());
-            Some(Token::Identifier(s))
+            match s {
+                "let" => Some(Token::Let),
+                _ => Some(Token::Identifier(s))
+            }
         } else {
             self.unread = &self.unread[1..];
             match c {
