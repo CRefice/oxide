@@ -55,6 +55,15 @@ impl Display for ValueError {
     }
 }
 
+impl Value {
+    pub fn as_bool(self) -> Result<bool, ValueError> {
+        match self {
+            Value::Bool(b) => Ok(b),
+            v => Err(ValueError::WrongType(Value::Bool(false), v))
+        }
+    }
+}
+
 impl Neg for Value {
     type Output = Result<Value, ValueError>;
     fn neg(self) -> Result<Value, ValueError> {

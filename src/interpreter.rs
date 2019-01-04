@@ -1,7 +1,7 @@
 use crate::expr::Expression;
 use crate::stmt::Statement;
 use crate::token::Token;
-use crate::value::{Value, ValueError};
+use crate::value::{self, Value, ValueError};
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt::{self, Display, Formatter};
@@ -57,30 +57,28 @@ pub struct Interpreter {
 
 impl Interpreter {
     pub fn new() -> Interpreter {
-        Interpreter { env: vec![Scope::new()] }
+        Interpreter {
+            env: vec![Scope::new()],
+        }
     }
 
     pub fn statement<'a>(&mut self, stmt: Statement<'a>) -> Result<(), InterpretError<'a>> {
         match stmt {
-            Statement::VarDecl{name, init} => Ok({
+            Statement::VarDecl { name, init } => Ok({
                 let val = self.evaluate(init)?;
                 self.scope_mut().define(name.to_string(), val);
             }),
             Statement::Expression(expr) => Ok({
                 self.evaluate(expr)?;
             }),
-            Statement::If{cond, succ, fail} => {
-                match self.evaluate(cond)? {
-                    Value::Bool(x) => Ok({
-                        if x {
-                            self.statement(*succ)?;
-                        } else if let Some(fail) = fail {
-                            self.statement(*fail)?;
-                        }
-                    }),
-                    x => Err(From::from(ValueError::WrongType(Value::Bool(false), x)))
+            Statement::If { cond, succ, fail } => Ok({
+                let cond = self.evaluate(cond)?.as_bool()?;
+                if cond {
+                    self.statement(*succ)?;
+                } else if let Some(fail) = fail {
+                    self.statement(*fail)?;
                 }
-            },
+            }),
             Statement::Block(stmts) => Ok({
                 self.env.push(Scope::new());
                 for s in stmts {
@@ -91,13 +89,16 @@ impl Interpreter {
         }
     }
 
-    pub fn evaluate<'a>(&self, ex: Expression<'a>) -> Result<Value, InterpretError<'a>> {
+    pub fn evaluate<'a>(&mut self, ex: Expression<'a>) -> Result<Value, InterpretError<'a>> {
         let cvterr = |e| InterpretError::from(e);
         match ex {
             Expression::Literal(x) => Ok(x),
-            Expression::Variable(var) => self
-                .get_var(var)
-                .ok_or(InterpretError::VarNotFound(var)),
+            Expression::Variable(var) => self.get_var(var).ok_or(InterpretError::VarNotFound(var)),
+            Expression::Assignment { name, val } => {
+                let val = self.evaluate(*val)?;
+                self.assign(name, val)
+                    .and_then(|_| self.get_var(name).ok_or(InterpretError::VarNotFound(name)))
+            }
             Expression::Grouping(b) => self.evaluate(*b),
             Expression::Unary(op, right) => {
                 let val = self.evaluate(*right)?;
@@ -105,6 +106,18 @@ impl Interpreter {
                     Token::Minus => (-val).map_err(cvterr),
                     Token::Bang => (!val).map_err(cvterr),
                     _ => panic!("Unrecognized unary operator"),
+                }
+            }
+            Expression::Logical(left, op, right) => {
+                let val = (self.evaluate(*left)?).as_bool()?;
+                match op {
+                    Token::And => {
+                        Ok(Value::Bool(val && self.evaluate(*right)?.as_bool()?))
+                    }
+                    Token::Or => {
+                        Ok(Value::Bool(val || self.evaluate(*right)?.as_bool()?))
+                    }
+                    _ => panic!("Unrecognized logical operator"),
                 }
             }
             Expression::Binary(left, op, right) => {
@@ -153,23 +166,32 @@ impl Interpreter {
         }
     }
 
+    pub fn print_state(&self) {
+        for (k, v) in self.scope().values.iter() {
+            println!("{}: {}", k, v);
+        }
+    }
+
     fn get_var(&self, name: &str) -> Option<Value> {
         for scope in self.env.iter().rev() {
-            if let x@Some(_) = scope.get(name) {
+            if let x @ Some(_) = scope.get(name) {
                 return x.map(|x| x.clone());
             }
         }
         None
     }
 
-    fn scope(&self) -> &Scope {
-        self.env.last().unwrap()
+    fn assign<'a>(&mut self, name: &'a str, val: Value) -> Result<(), InterpretError<'a>> {
+        for scope in self.env.iter_mut().rev() {
+            if scope.values.contains_key(name) {
+                return Ok(scope.define(name.to_string(), val));
+            }
+        }
+        Err(InterpretError::VarNotFound(name))
     }
 
-    pub fn print_state(&self) {
-        for (k, v) in self.scope().values.iter() {
-            println!("{}: {}", k, v);
-        }
+    fn scope(&self) -> &Scope {
+        self.env.last().unwrap()
     }
 
     fn scope_mut(&mut self) -> &mut Scope {

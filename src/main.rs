@@ -18,22 +18,15 @@ fn repl() {
         let lexer = token::Lexer::new(&input);
         let mut parser = parse::Parser::new(lexer.clone());
         match parser.declaration() {
-            Ok(stmt) => match interp.statement(stmt) {
-                Ok(_) => (),
-                Err(err) => println!("{}", err),
+            Ok(stmt::Statement::Expression(expr)) => match interp.evaluate(expr) {
+                Ok(val) => println!("{}", val),
+                Err(err) => println!("Evaluation error: {}", err),
             },
+            Ok(stmt) => if let Err(err) = interp.statement(stmt) {
+                println!("Interpret error: {}", err)
+            }
             Err(err) => {
-                let mut parser = parse::Parser::new(lexer);
-                match parser.expression() {
-                    Ok(expr) => match interp.evaluate(expr) {
-                        Ok(val) => println!("{}", val),
-                        Err(err) => println!("{}", err),
-                    },
-                    Err(err2) => {
-                        println!("Error parsing statement: {}", err);
-                        println!("Error parsing expression: {}", err2);
-                    }
-                }
+                println!("Parse error: {}", err);
             }
         }
     }

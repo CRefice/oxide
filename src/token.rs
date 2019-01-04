@@ -7,6 +7,8 @@ pub enum Token<'a> {
     Let,
     If,
     Else,
+    And,
+    Or,
     Semicolon,
     Plus,
     Minus,
@@ -35,9 +37,7 @@ pub struct Lexer<'a> {
 
 impl<'a> Lexer<'a> {
     pub fn new(line: &'a str) -> Lexer<'a> {
-        Lexer {
-            unread: line,
-        }
+        Lexer { unread: line }
     }
 
     fn advance_while<F>(&mut self, predicate: F) -> &'a str
@@ -68,9 +68,11 @@ impl<'a> Iterator for Lexer<'a> {
                 "let" => Some(Token::Let),
                 "if" => Some(Token::If),
                 "else" => Some(Token::Else),
+                "and" => Some(Token::And),
+                "or" => Some(Token::Or),
                 "true" => Some(Token::Bool(true)),
                 "false" => Some(Token::Bool(false)),
-                _ => Some(Token::Identifier(s))
+                _ => Some(Token::Identifier(s)),
             }
         } else {
             self.unread = &self.unread[1..];

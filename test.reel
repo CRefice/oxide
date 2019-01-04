@@ -1,11 +1,7 @@
 let x = 2
-let y = 3
-let z = (x + x + y * 2) / 10
-if y == 0 {
-	let w = 4
-	let z = w
+let y = 2
+if x + y == 4 and x - y == 0 {
+	x = x + y
 } else {
-	let o = false
+	x = "Wrong!"
 }
-let alpha = "your mom"
-let poo = "poo" + alpha

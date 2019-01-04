@@ -9,6 +9,10 @@ use std::iter::Peekable;
 pub enum ParseError<'a> {
     InvalidToken(Token<'a>),
     MissingToken(&'static str),
+    InvalidExpression {
+        expected: Expression<'a>,
+        found: Expression<'a>,
+    },
     EndOfInput,
 }
 
@@ -17,6 +21,9 @@ impl<'a> Display for ParseError<'a> {
         match self {
             ParseError::InvalidToken(t) => write!(f, "Unexpected token: {:?}", t),
             ParseError::MissingToken(t) => write!(f, "Expected token: {}", t),
+            ParseError::InvalidExpression { expected, found } => {
+                write!(f, "Expected expression: {:?}, found: {:?}", expected, found)
+            }
             ParseError::EndOfInput => write!(f, "Unexpected end of input"),
         }
     }
@@ -102,17 +109,55 @@ impl<'a> Parser<'a> {
     }
 
     fn expr_statement(&mut self) -> Result<Statement<'a>, ParseError<'a>> {
-        let expr = self.expression()?;
-        if let Some(Token::Semicolon) = self.iter.peek() {
-            self.iter.next();
-            Ok(Statement::Expression(expr))
-        } else {
-            Err(ParseError::MissingToken(";"))
-        }
+        Ok(Statement::Expression(self.expression()?))
     }
 
     pub fn expression(&mut self) -> Result<Expression<'a>, ParseError<'a>> {
-        self.equality()
+        self.assignment()
+    }
+
+    fn assignment(&mut self) -> Result<Expression<'a>, ParseError<'a>> {
+        let expr = self.or()?;
+        match self.iter.peek() {
+            Some(Token::Equal) => {
+                self.iter.next();
+                let val = self.assignment()?;
+                match expr {
+                    Expression::Variable(name) => Ok(Expression::Assignment {
+                        name,
+                        val: Box::new(val),
+                    }),
+                    expr => Err(ParseError::InvalidExpression {
+                        found: expr,
+                        expected: Expression::Assignment {
+                            name: "variable",
+                            val: Box::new(val),
+                        },
+                    }),
+                }
+            }
+            _ => Ok(expr)
+        }
+    }
+
+    fn or(&mut self) -> Result<Expression<'a>, ParseError<'a>> {
+        let mut expr = self.and()?;
+        while let Some(Token::Or) = self.iter.peek() {
+            let op = self.iter.next().unwrap();
+            let right = self.and()?;
+            expr = Expression::Logical(Box::new(expr), op, Box::new(right));
+        }
+        Ok(expr)
+    }
+
+    fn and(&mut self) -> Result<Expression<'a>, ParseError<'a>> {
+        let mut expr = self.equality()?;
+        while let Some(Token::And) = self.iter.peek() {
+            let op = self.iter.next().unwrap();
+            let right = self.equality()?;
+            expr = Expression::Logical(Box::new(expr), op, Box::new(right));
+        }
+        Ok(expr)
     }
 
     fn equality(&mut self) -> Result<Expression<'a>, ParseError<'a>> {
