@@ -33,27 +33,26 @@ impl<'a> Parser<'a> {
         }
     }
 
+    pub fn done(&mut self) -> bool {
+        self.iter.peek().is_none()
+    }
+
     pub fn declaration(&mut self) -> Result<Statement<'a>, ParseError<'a>> {
         match self.iter.peek() {
-            Some(Token::Let) => {
-                self.iter.next();
-                self.var_declaration()
-            }
+            Some(Token::Let) => self.var_declaration(),
             _ => self.statement(),
         }
     }
 
     fn var_declaration(&mut self) -> Result<Statement<'a>, ParseError<'a>> {
+        self.iter.next(); // Let token
         if let Some(Token::Identifier(name)) = self.iter.next() {
-            if let Some(Token::Equal) = self.iter.next() {
-                let init = self.expression()?;
-                if let Some(Token::Semicolon) = self.iter.next() {
-                    Ok(Statement::VarDecl(name, init))
-                } else {
-                    Err(ParseError::MissingToken("="))
-                }
-            } else {
-                Err(ParseError::MissingToken("="))
+            match self.iter.next() {
+                Some(Token::Equal) => Ok(Statement::VarDecl {
+                    name,
+                    init: self.expression()?,
+                }),
+                _ => Err(ParseError::MissingToken("=")),
             }
         } else {
             Err(ParseError::MissingToken("identifier"))
@@ -61,7 +60,45 @@ impl<'a> Parser<'a> {
     }
 
     fn statement(&mut self) -> Result<Statement<'a>, ParseError<'a>> {
-        self.expr_statement()
+        match self.iter.peek() {
+            Some(Token::If) => self.if_statement(),
+            Some(Token::LeftBrace) => self.block(),
+            _ => self.expr_statement(),
+        }
+    }
+
+    fn if_statement(&mut self) -> Result<Statement<'a>, ParseError<'a>> {
+        self.iter.next(); // If token
+        let cond = self.expression()?;
+        let succ = Box::new(self.block()?);
+        let fail = if let Some(Token::Else) = self.iter.peek() {
+            self.iter.next().unwrap();
+            Some(Box::new(self.block()?))
+        } else {
+            None
+        };
+        Ok(Statement::If { cond, succ, fail })
+    }
+
+    fn block(&mut self) -> Result<Statement<'a>, ParseError<'a>> {
+        if let Some(Token::LeftBrace) = self.iter.next() {
+        } else {
+            return Err(ParseError::MissingToken("}"));
+        }
+
+        let mut stmts = Vec::new();
+        while let Some(token) = self.iter.peek() {
+            match token {
+                Token::RightBrace => {
+                    self.iter.next();
+                    break;
+                }
+                _ => {
+                    stmts.push(self.declaration()?);
+                }
+            }
+        }
+        Ok(Statement::Block(stmts))
     }
 
     fn expr_statement(&mut self) -> Result<Statement<'a>, ParseError<'a>> {
@@ -161,6 +198,8 @@ impl<'a> Parser<'a> {
             Ok(Expression::Literal(Value::Num(x)))
         } else if let Some(Token::StringLiteral(s)) = tok {
             Ok(Expression::Literal(Value::Str(s.to_string())))
+        } else if let Some(Token::Bool(b)) = tok {
+            Ok(Expression::Literal(Value::Bool(b)))
         } else if let Some(Token::Identifier(var)) = tok {
             Ok(Expression::Variable(var))
         } else {

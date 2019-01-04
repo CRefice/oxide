@@ -25,12 +25,17 @@ pub enum ValueError {
     UnaryOp(Value, &'static str),
     BinaryOp(Value, Value, &'static str),
     Comparison(Value, Value),
+    WrongType(Value, Value),
 }
 
 impl Display for ValueError {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
-            UnaryOp(val, op) => write!(f, "Cannot apply operator '{}' to the given operand ({:?})", op, val),
+            UnaryOp(val, op) => write!(
+                f,
+                "Cannot apply operator '{}' to the given operand ({:?})",
+                op, val
+            ),
             BinaryOp(a, b, op) => write!(
                 f,
                 "Cannot apply operator '{}' to the given operands ('{:?}' and '{:?}')",
@@ -39,6 +44,11 @@ impl Display for ValueError {
             Comparison(a, b) => write!(
                 f,
                 "Cannot compare the given operands ('{:?}' and '{:?}')",
+                a, b,
+            ),
+            WrongType(a, b) => write!(
+                f,
+                "Type mismatch: expected {:?}, got {:?}",
                 a, b,
             ),
         }
@@ -91,7 +101,7 @@ impl Mul for Value {
     fn mul(self, other: Value) -> Result<Value, ValueError> {
         match (self, other) {
             (Value::Num(x), Value::Num(y)) => Ok(Value::Num(x * y)),
-            (a, b) => Err(BinaryOp(a, b, "*"))
+            (a, b) => Err(BinaryOp(a, b, "*")),
         }
     }
 }
@@ -101,7 +111,7 @@ impl Div for Value {
     fn div(self, other: Value) -> Result<Value, ValueError> {
         match (self, other) {
             (Value::Num(x), Value::Num(y)) => Ok(Value::Num(x / y)),
-            (a, b) => Err(BinaryOp(a, b, "/"))
+            (a, b) => Err(BinaryOp(a, b, "/")),
         }
     }
 }
@@ -119,7 +129,7 @@ impl Value {
     pub fn compare(self, other: Value) -> Result<Ordering, ValueError> {
         match (self, other) {
             (Value::Num(x), Value::Num(y)) => Ok(x.partial_cmp(&y).unwrap_or(Ordering::Less)),
-            (a, b) => Err(Comparison(a, b))
+            (a, b) => Err(Comparison(a, b)),
         }
     }
 }

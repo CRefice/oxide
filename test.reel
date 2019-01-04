@@ -1,0 +1,11 @@
+let x = 2
+let y = 3
+let z = (x + x + y * 2) / 10
+if y == 0 {
+	let w = 4
+	let z = w
+} else {
+	let o = false
+}
+let alpha = "your mom"
+let poo = "poo" + alpha

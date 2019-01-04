@@ -5,6 +5,8 @@ pub enum Token<'a> {
     StringLiteral(&'a str),
     Identifier(&'a str),
     Let,
+    If,
+    Else,
     Semicolon,
     Plus,
     Minus,
@@ -32,9 +34,9 @@ pub struct Lexer<'a> {
 }
 
 impl<'a> Lexer<'a> {
-    pub fn new<S: AsRef<str>>(line: &'a S) -> Lexer<'a> {
+    pub fn new(line: &'a str) -> Lexer<'a> {
         Lexer {
-            unread: line.as_ref(),
+            unread: line,
         }
     }
 
@@ -64,6 +66,8 @@ impl<'a> Iterator for Lexer<'a> {
             let s = self.advance_while(|c| c.is_alphanumeric());
             match s {
                 "let" => Some(Token::Let),
+                "if" => Some(Token::If),
+                "else" => Some(Token::Else),
                 "true" => Some(Token::Bool(true)),
                 "false" => Some(Token::Bool(false)),
                 _ => Some(Token::Identifier(s))

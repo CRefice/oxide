@@ -8,14 +8,12 @@ use std::fmt::{self, Display, Formatter};
 
 struct Scope {
     values: HashMap<String, Value>,
-    parent: Option<Box<Scope>>,
 }
 
 impl Scope {
     fn new() -> Self {
         Scope {
             values: HashMap::new(),
-            parent: None,
         }
     }
 
@@ -24,24 +22,11 @@ impl Scope {
     }
 
     fn get(&self, name: &str) -> Option<&Value> {
-        self.values
-            .get(name)
-            .or_else(|| self.parent.as_ref().and_then(|p| p.get(name)))
+        self.values.get(name)
     }
 
     fn get_mut(&mut self, name: &str) -> Option<&mut Value> {
-        self.values
-            .get_mut(name)
-            .or({ self.parent.as_mut().and_then(|p| p.get_mut(name)) })
-    }
-
-    fn begin_scope(self, mut scope: Scope) -> Self {
-        scope.parent = Some(Box::new(self));
-        scope
-    }
-
-    fn end_scope(self) -> Option<Self> {
-        self.parent.map(|s| *s)
+        self.values.get_mut(name)
     }
 }
 
@@ -67,21 +52,41 @@ impl<'a> From<ValueError> for InterpretError<'a> {
 }
 
 pub struct Interpreter {
-    env: Scope,
+    env: Vec<Scope>,
 }
 
 impl Interpreter {
     pub fn new() -> Interpreter {
-        Interpreter { env: Scope::new() }
+        Interpreter { env: vec![Scope::new()] }
     }
 
     pub fn statement<'a>(&mut self, stmt: Statement<'a>) -> Result<(), InterpretError<'a>> {
         match stmt {
-            Statement::VarDecl(name, init) => Ok({
-                self.env.define(name.to_string(), self.evaluate(init)?);
+            Statement::VarDecl{name, init} => Ok({
+                let val = self.evaluate(init)?;
+                self.scope_mut().define(name.to_string(), val);
             }),
             Statement::Expression(expr) => Ok({
                 self.evaluate(expr)?;
+            }),
+            Statement::If{cond, succ, fail} => {
+                match self.evaluate(cond)? {
+                    Value::Bool(x) => Ok({
+                        if x {
+                            self.statement(*succ)?;
+                        } else if let Some(fail) = fail {
+                            self.statement(*fail)?;
+                        }
+                    }),
+                    x => Err(From::from(ValueError::WrongType(Value::Bool(false), x)))
+                }
+            },
+            Statement::Block(stmts) => Ok({
+                self.env.push(Scope::new());
+                for s in stmts {
+                    self.statement(s)?;
+                }
+                self.env.pop();
             }),
         }
     }
@@ -91,10 +96,8 @@ impl Interpreter {
         match ex {
             Expression::Literal(x) => Ok(x),
             Expression::Variable(var) => self
-                .env
-                .get(var)
-                .ok_or(InterpretError::VarNotFound(var))
-                .map(|c| c.clone()),
+                .get_var(var)
+                .ok_or(InterpretError::VarNotFound(var)),
             Expression::Grouping(b) => self.evaluate(*b),
             Expression::Unary(op, right) => {
                 let val = self.evaluate(*right)?;
@@ -148,5 +151,28 @@ impl Interpreter {
                 }
             }
         }
+    }
+
+    fn get_var(&self, name: &str) -> Option<Value> {
+        for scope in self.env.iter().rev() {
+            if let x@Some(_) = scope.get(name) {
+                return x.map(|x| x.clone());
+            }
+        }
+        None
+    }
+
+    fn scope(&self) -> &Scope {
+        self.env.last().unwrap()
+    }
+
+    pub fn print_state(&self) {
+        for (k, v) in self.scope().values.iter() {
+            println!("{}: {}", k, v);
+        }
+    }
+
+    fn scope_mut(&mut self) -> &mut Scope {
+        self.env.last_mut().unwrap()
     }
 }
