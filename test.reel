@@ -1,6 +1,0 @@
-let x = 256
-let log = 1
-while {x / 2 > 1} (
-	x = x / 2
-	log = log + 1
-}
