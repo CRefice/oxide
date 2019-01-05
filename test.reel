@@ -1,7 +1,6 @@
-let x = 2
-let y = 2
-if x + y == 4 and x - y == 0 {
-	x = x + y
-} else {
-	x = "Wrong!"
+let x = 256
+let log = 1
+while x / 2 > 1 {
+	x = x / 2
+	log = log + 1
 }

@@ -2,7 +2,7 @@ mod expr;
 mod interpreter;
 mod parse;
 mod stmt;
-mod token;
+mod scan;
 mod value;
 
 use crate::interpreter::Interpreter;
@@ -15,14 +15,14 @@ fn repl() {
     loop {
         let mut input = String::new();
         io::stdin().read_line(&mut input).unwrap();
-        let lexer = token::Lexer::new(&input);
+        let lexer = scan::Lexer::new(&input);
         let mut parser = parse::Parser::new(lexer.clone());
         match parser.declaration() {
-            Ok(stmt::Statement::Expression(expr)) => match interp.evaluate(expr) {
+            Ok(stmt::Statement::Expression(expr)) => match interp.evaluate(&expr) {
                 Ok(val) => println!("{}", val),
                 Err(err) => println!("Evaluation error: {}", err),
             },
-            Ok(stmt) => if let Err(err) = interp.statement(stmt) {
+            Ok(stmt) => if let Err(err) = interp.statement(&stmt) {
                 println!("Interpret error: {}", err)
             }
             Err(err) => {
@@ -32,19 +32,35 @@ fn repl() {
     }
 }
 
+fn loc_from_index(i: usize, s: &str) -> (usize, usize) {
+    let mut line = 1;
+    let mut col = 1;
+    for c in s.chars().take(i) {
+        if c == '\n' {
+            line = line + 1;
+            col = 0;
+        } else {
+            col = col + 1;
+        }
+    }
+    (line, col)
+}
+
 fn from_file(file: &str) {
     let contents = fs::read_to_string(file).expect("Unable to read file");
     let mut intrp = Interpreter::new();
-    let lexer = token::Lexer::new(&contents);
+    let lexer = scan::Lexer::new(&contents);
     let mut parser = parse::Parser::new(lexer);
-    while !parser.done() {
-        if let Err(e) = parser
-            .declaration()
-            .map_err(|e| format!("{}", e))
-            .and_then(|stmt| intrp.statement(stmt).map_err(|e| format!("{}", e)))
-        {
-            println!("{}", e);
-            break;
+    match parser.program() {
+        Ok(stmts) => for s in stmts.iter() {
+            if let Err(e) = intrp.statement(&s) {
+                println!("Interpret error: {}", e);
+            }
+        }
+        Err(e) => {
+            let (line, col) = loc_from_index(e.location(), &contents);
+            println!("{}: Syntax error", file);
+            println!("{}:{}: {}", line, col, e);
         }
     }
     intrp.print_state();

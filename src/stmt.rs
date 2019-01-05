@@ -11,6 +11,10 @@ pub enum Statement<'a> {
         succ: Box<Statement<'a>>,
         fail: Option<Box<Statement<'a>>>,
     },
+    While {
+        cond: expr::Expression<'a>,
+        stmt: Box<Statement<'a>>,
+    },
     Expression(expr::Expression<'a>),
     Block(Vec<Statement<'a>>),
 }

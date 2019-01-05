@@ -1,7 +1,7 @@
 use crate::expr::Expression;
 use crate::stmt::Statement;
-use crate::token::Token;
-use crate::value::{self, Value, ValueError};
+use crate::scan::Token;
+use crate::value::{Value, ValueError};
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt::{self, Display, Formatter};
@@ -23,10 +23,6 @@ impl Scope {
 
     fn get(&self, name: &str) -> Option<&Value> {
         self.values.get(name)
-    }
-
-    fn get_mut(&mut self, name: &str) -> Option<&mut Value> {
-        self.values.get_mut(name)
     }
 }
 
@@ -62,7 +58,7 @@ impl Interpreter {
         }
     }
 
-    pub fn statement<'a>(&mut self, stmt: Statement<'a>) -> Result<(), InterpretError<'a>> {
+    pub fn statement<'a>(&mut self, stmt: &Statement<'a>) -> Result<(), InterpretError<'a>> {
         match stmt {
             Statement::VarDecl { name, init } => Ok({
                 let val = self.evaluate(init)?;
@@ -74,9 +70,14 @@ impl Interpreter {
             Statement::If { cond, succ, fail } => Ok({
                 let cond = self.evaluate(cond)?.as_bool()?;
                 if cond {
-                    self.statement(*succ)?;
+                    self.statement(succ)?;
                 } else if let Some(fail) = fail {
-                    self.statement(*fail)?;
+                    self.statement(fail)?;
+                }
+            }),
+            Statement::While { cond, stmt } => Ok({
+                while self.evaluate(cond)?.as_bool()? {
+                    self.statement(stmt)?;
                 }
             }),
             Statement::Block(stmts) => Ok({
@@ -89,19 +90,19 @@ impl Interpreter {
         }
     }
 
-    pub fn evaluate<'a>(&mut self, ex: Expression<'a>) -> Result<Value, InterpretError<'a>> {
+    pub fn evaluate<'a>(&mut self, ex: &Expression<'a>) -> Result<Value, InterpretError<'a>> {
         let cvterr = |e| InterpretError::from(e);
         match ex {
-            Expression::Literal(x) => Ok(x),
+            Expression::Literal(x) => Ok(x.clone()),
             Expression::Variable(var) => self.get_var(var).ok_or(InterpretError::VarNotFound(var)),
             Expression::Assignment { name, val } => {
-                let val = self.evaluate(*val)?;
+                let val = self.evaluate(val)?;
                 self.assign(name, val)
                     .and_then(|_| self.get_var(name).ok_or(InterpretError::VarNotFound(name)))
             }
-            Expression::Grouping(b) => self.evaluate(*b),
+            Expression::Grouping(b) => self.evaluate(b),
             Expression::Unary(op, right) => {
-                let val = self.evaluate(*right)?;
+                let val = self.evaluate(right)?;
                 match op {
                     Token::Minus => (-val).map_err(cvterr),
                     Token::Bang => (!val).map_err(cvterr),
@@ -109,20 +110,16 @@ impl Interpreter {
                 }
             }
             Expression::Logical(left, op, right) => {
-                let val = (self.evaluate(*left)?).as_bool()?;
+                let val = (self.evaluate(left)?).as_bool()?;
                 match op {
-                    Token::And => {
-                        Ok(Value::Bool(val && self.evaluate(*right)?.as_bool()?))
-                    }
-                    Token::Or => {
-                        Ok(Value::Bool(val || self.evaluate(*right)?.as_bool()?))
-                    }
+                    Token::And => Ok(Value::Bool(val && self.evaluate(right)?.as_bool()?)),
+                    Token::Or => Ok(Value::Bool(val || self.evaluate(right)?.as_bool()?)),
                     _ => panic!("Unrecognized logical operator"),
                 }
             }
             Expression::Binary(left, op, right) => {
-                let left = self.evaluate(*left)?;
-                let right = self.evaluate(*right)?;
+                let left = self.evaluate(left)?;
+                let right = self.evaluate(right)?;
                 match op {
                     Token::Plus => (left + right).map_err(cvterr),
                     Token::Minus => (left - right).map_err(cvterr),

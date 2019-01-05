@@ -1,4 +1,4 @@
-use crate::token::Token;
+use crate::scan::Token;
 use crate::value::Value;
 use std::fmt::{self, Display, Formatter};
 
