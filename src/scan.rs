@@ -78,7 +78,6 @@ impl<'a> Lexer<'a> {
     }
 
     fn scan(&mut self) -> Option<Token<'a>> {
-        self.advance_while(|c| c.is_whitespace());
         let c = self.unread.chars().next()?;
         if c.is_numeric() {
             let cs = self.unread.char_indices();
@@ -154,6 +153,7 @@ impl<'a> Iterator for Lexer<'a> {
     type Item = (usize, Token<'a>);
 
     fn next(&mut self) -> Option<(usize, Token<'a>)> {
-        Some((self.loc, self.scan()?))
+        self.advance_while(|c| c.is_whitespace());
+        Some((self.loc + 1, self.scan()?))
     }
 }

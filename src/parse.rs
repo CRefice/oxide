@@ -64,7 +64,7 @@ fn to_str(t: &Token) -> &'static str {
 impl<'a> Display for ParseError<'a> {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
-            ParseError::Unexpected { tok, .. } => write!(f, "Unexpected token: {:?}", tok),
+            ParseError::Unexpected { tok, .. } => write!(f, "Unexpected token: {}", to_str(tok)),
             ParseError::InvalidToken {
                 expected, found, ..
             } => write!(f, "Expected {}, found {}", to_str(expected), to_str(found)),
@@ -178,7 +178,7 @@ impl<'a> Parser<'a> {
                     }
                 }
             } else {
-                return Err(ParseError::EndOfInput)
+                return Err(ParseError::EndOfInput);
             }
         }
         Ok(Statement::Block(stmts))
