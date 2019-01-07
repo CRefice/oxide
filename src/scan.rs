@@ -1,9 +1,10 @@
 use crate::value::Value;
+use std::borrow::Cow;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Token<'a> {
     Literal(Value),
-    Identifier(&'a str),
+    Identifier(Cow<'a, str>),
     Let,
     If,
     Else,
@@ -29,6 +30,24 @@ pub enum Token<'a> {
     RightBracket,
     LeftBrace,
     RightBrace,
+}
+
+impl<'a> Token<'a> {
+    pub fn identifier(&self) -> &str {
+        match self {
+            Token::Identifier(name) => &name,
+            x => panic!("Tried to get identifier out of {:?}", x),
+        }
+    }
+
+    pub fn to_owned(self) -> Self {
+        match self {
+            Token::Identifier(name) => {
+                Token::Identifier(Cow::from(name.into_owned()))
+            }
+            _ => self
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -102,7 +121,7 @@ impl<'a> Lexer<'a> {
                 "or" => Some(Token::Or),
                 "true" => Some(Token::Literal(Value::Bool(true))),
                 "false" => Some(Token::Literal(Value::Bool(true))),
-                _ => Some(Token::Identifier(s)),
+                _ => Some(Token::Identifier(Cow::from(s))),
             }
         } else {
             self.advance(1);

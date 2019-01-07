@@ -1,6 +1,7 @@
 use crate::expr::Expression;
-use crate::scan::{Lexer, Token};
+use crate::scan::Token;
 use crate::stmt::Statement;
+use std::borrow::Cow;
 use std::fmt::{self, Display, Formatter};
 use std::iter::Peekable;
 use std::result;
@@ -91,14 +92,20 @@ macro_rules! match_token {
     };
 }
 
-pub struct Parser<'a> {
-    iter: Peekable<Lexer<'a>>,
+pub struct Parser<'a, I>
+where
+    I: Iterator<Item = (usize, Token<'a>)>,
+{
+    iter: Peekable<I>,
 }
 
-impl<'a> Parser<'a> {
-    pub fn new(lex: Lexer<'a>) -> Self {
+impl<'a, I> Parser<'a, I>
+where
+    I: Iterator<Item = (usize, Token<'a>)>,
+{
+    pub fn new(it: I) -> Self {
         Parser {
-            iter: lex.peekable(),
+            iter: it.peekable(),
         }
     }
 
@@ -121,12 +128,12 @@ impl<'a> Parser<'a> {
         self.iter.next(); // Let token
         match_token!(
             self.iter.next(),
-            Token::Identifier(name),
-            Token::Identifier("identifier"),
+            ident@Token::Identifier(_),
+            Token::Identifier(Cow::from("identifier")),
             {
                 match_token!(self.iter.next(), Token::Equal, Token::Equal, {
                     Ok(Statement::VarDecl {
-                        name,
+                        ident,
                         init: self.expression()?,
                     })
                 })
@@ -199,13 +206,13 @@ impl<'a> Parser<'a> {
                 let (loc, token) = self.iter.next().unwrap();
                 let val = self.assignment()?;
                 match expr {
-                    Expression::Variable(name) => Ok(Expression::Assignment {
-                        name,
+                    Expression::Variable(ident) => Ok(Expression::Assignment {
+                        ident,
                         val: Box::new(val),
                     }),
                     _ => Err(ParseError::InvalidToken {
                         found: token,
-                        expected: Token::Identifier("var"),
+                        expected: Token::Identifier(Cow::from("var")),
                         loc,
                     }),
                 }
@@ -313,7 +320,7 @@ impl<'a> Parser<'a> {
                 })
             }
             Some((_, Token::Literal(val))) => Ok(Expression::Literal(val)),
-            Some((_, Token::Identifier(var))) => Ok(Expression::Variable(var)),
+            Some((_, ident @ Token::Identifier(_))) => Ok(Expression::Variable(ident)),
             Some((loc, tok)) => Err(ParseError::Unexpected { tok, loc }),
             None => Err(ParseError::EndOfInput),
         }

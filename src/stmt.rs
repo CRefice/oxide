@@ -1,9 +1,10 @@
 use crate::expr;
+use crate::scan::Token;
 
 #[derive(Debug)]
 pub enum Statement<'a> {
     VarDecl {
-        name: &'a str,
+        ident: Token<'a>,
         init: expr::Expression<'a>,
     },
     If {

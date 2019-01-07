@@ -1,6 +1,6 @@
 use crate::expr::Expression;
-use crate::stmt::Statement;
 use crate::scan::Token;
+use crate::stmt::Statement;
 use crate::value::{Value, ValueError};
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -29,14 +29,14 @@ impl Scope {
 #[derive(Debug)]
 pub enum InterpretError<'a> {
     Value(ValueError),
-    VarNotFound(&'a str),
+    VarNotFound(Token<'a>),
 }
 
 impl<'a> Display for InterpretError<'a> {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
             InterpretError::Value(err) => write!(f, "{}", err),
-            InterpretError::VarNotFound(name) => write!(f, "Variable '{}' not found", name),
+            InterpretError::VarNotFound(name) => write!(f, "Variable '{:?}' not found", name),
         }
     }
 }
@@ -58,11 +58,11 @@ impl Interpreter {
         }
     }
 
-    pub fn statement<'a>(&mut self, stmt: &Statement<'a>) -> Result<(), InterpretError<'a>> {
+    pub fn statement<'a>(&mut self, stmt: &'a Statement<'a>) -> Result<(), InterpretError<'a>> {
         match stmt {
-            Statement::VarDecl { name, init } => Ok({
+            Statement::VarDecl { ident, init } => Ok({
                 let val = self.evaluate(init)?;
-                self.scope_mut().define(name.to_string(), val);
+                self.scope_mut().define(ident.identifier().to_owned(), val);
             }),
             Statement::Expression(expr) => Ok({
                 self.evaluate(expr)?;
@@ -90,15 +90,19 @@ impl Interpreter {
         }
     }
 
-    pub fn evaluate<'a>(&mut self, ex: &Expression<'a>) -> Result<Value, InterpretError<'a>> {
+    pub fn evaluate<'a>(&mut self, ex: &'a Expression<'a>) -> Result<Value, InterpretError<'a>> {
         let cvterr = |e| InterpretError::from(e);
         match ex {
             Expression::Literal(x) => Ok(x.clone()),
-            Expression::Variable(var) => self.get_var(var).ok_or(InterpretError::VarNotFound(var)),
-            Expression::Assignment { name, val } => {
+            Expression::Variable(var) => self
+                .get_var(var.identifier())
+                .ok_or(InterpretError::VarNotFound(var.clone())),
+            Expression::Assignment { ident, val } => {
                 let val = self.evaluate(val)?;
-                self.assign(name, val)
-                    .and_then(|_| self.get_var(name).ok_or(InterpretError::VarNotFound(name)))
+                self.assign(ident.clone(), val).and_then(|_| {
+                    self.get_var(ident.identifier())
+                        .ok_or(InterpretError::VarNotFound(ident.clone()))
+                })
             }
             Expression::Grouping(b) => self.evaluate(b),
             Expression::Unary(op, right) => {
@@ -178,13 +182,14 @@ impl Interpreter {
         None
     }
 
-    fn assign<'a>(&mut self, name: &'a str, val: Value) -> Result<(), InterpretError<'a>> {
+    fn assign<'a>(&mut self, ident: Token<'a>, val: Value) -> Result<(), InterpretError<'a>> {
+        let name = ident.identifier();
         for scope in self.env.iter_mut().rev() {
             if scope.values.contains_key(name) {
                 return Ok(scope.define(name.to_string(), val));
             }
         }
-        Err(InterpretError::VarNotFound(name))
+        Err(InterpretError::VarNotFound(ident))
     }
 
     fn scope(&self) -> &Scope {

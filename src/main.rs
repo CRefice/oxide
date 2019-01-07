@@ -16,7 +16,7 @@ fn repl() {
         let mut input = String::new();
         io::stdin().read_line(&mut input).unwrap();
         let lexer = scan::Lexer::new(&input);
-        let mut parser = parse::Parser::new(lexer.clone());
+        let mut parser = parse::Parser::new(lexer.map(|(l, t)| (l, t.to_owned())));
         match parser.declaration() {
             Ok(stmt::Statement::Expression(expr)) => match interp.evaluate(&expr) {
                 Ok(val) => println!("{}", val),
