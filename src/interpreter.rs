@@ -1,34 +1,36 @@
 use crate::expr::Expression;
 use crate::scan::Token;
 use crate::stmt::Statement;
-use crate::value::{Value, ValueError};
+use crate::value::{Closure, Fn, Value, ValueError};
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt::{self, Display, Formatter};
+use std::ops;
 
-struct Scope {
-    values: HashMap<String, Value>,
+#[derive(Clone)]
+pub struct Scope<'a> {
+    values: HashMap<String, Value<'a>>,
 }
 
-impl Scope {
+impl<'a> Scope<'a> {
     fn new() -> Self {
         Scope {
             values: HashMap::new(),
         }
     }
 
-    fn define(&mut self, name: String, val: Value) {
+    fn define(&mut self, name: String, val: Value<'a>) {
         self.values.insert(name, val);
     }
 
-    fn get(&self, name: &str) -> Option<&Value> {
+    fn get(&self, name: &str) -> Option<&Value<'a>> {
         self.values.get(name)
     }
 }
 
 #[derive(Debug)]
 pub enum InterpretError<'a> {
-    Value(ValueError),
+    Value(ValueError<'a>),
     VarNotFound(Token<'a>),
 }
 
@@ -41,28 +43,47 @@ impl<'a> Display for InterpretError<'a> {
     }
 }
 
-impl<'a> From<ValueError> for InterpretError<'a> {
-    fn from(e: ValueError) -> Self {
+impl<'a> From<ValueError<'a>> for InterpretError<'a> {
+    fn from(e: ValueError<'a>) -> Self {
         InterpretError::Value(e)
     }
 }
 
-pub struct Interpreter {
-    env: Vec<Scope>,
+pub struct Interpreter<'a> {
+    env: Vec<Scope<'a>>,
 }
 
-impl Interpreter {
-    pub fn new() -> Interpreter {
+impl<'a> Interpreter<'a> {
+    pub fn new() -> Interpreter<'a> {
         Interpreter {
             env: vec![Scope::new()],
         }
     }
 
-    pub fn statement<'a>(&mut self, stmt: &'a Statement<'a>) -> Result<(), InterpretError<'a>> {
+    pub fn native_fn(&mut self, name: &str, f: &'a dyn ops::Fn(Vec<Value<'a>>) -> Value<'a>) {
+        self.env
+            .first_mut()
+            .unwrap()
+            .define(name.to_owned(), Value::Fn(Fn::Native(f)));
+    }
+
+    pub fn statement(&mut self, stmt: &Statement<'a>) -> Result<(), InterpretError<'a>> {
         match stmt {
             Statement::VarDecl { ident, init } => Ok({
                 let val = self.evaluate(init)?;
                 self.scope_mut().define(ident.identifier().to_owned(), val);
+            }),
+            Statement::FnDecl {
+                ident,
+                params,
+                body,
+            } => Ok({
+                let f = Value::Fn(Fn::User {
+                    closure: 1,
+                    params: params.clone(),
+                    body: body.clone(),
+                });
+                self.scope_mut().define(ident.identifier().to_owned(), f);
             }),
             Statement::Expression(expr) => Ok({
                 self.evaluate(expr)?;
@@ -90,13 +111,46 @@ impl Interpreter {
         }
     }
 
-    pub fn evaluate<'a>(&mut self, ex: &'a Expression<'a>) -> Result<Value, InterpretError<'a>> {
+    pub fn evaluate(&mut self, ex: &Expression<'a>) -> Result<Value<'a>, InterpretError<'a>> {
         let cvterr = |e| InterpretError::from(e);
         match ex {
             Expression::Literal(x) => Ok(x.clone()),
             Expression::Variable(var) => self
                 .get_var(var.identifier())
                 .ok_or(InterpretError::VarNotFound(var.clone())),
+            Expression::Call { callee, args } => match self.evaluate(callee)? {
+                Value::Fn(f) => match f {
+                    Fn::Native(f) => Ok(f(args
+                        .into_iter()
+                        .map(|e| self.evaluate(e).unwrap())
+                        .collect())),
+                    Fn::User {
+                        closure,
+                        params,
+                        body,
+                    } => {
+                        if params.len() != args.len() {
+                            panic!("Wrong number of arguments!")
+                        }
+                        let mut s = Scope::new();
+                        for (param, arg) in params.into_iter().zip(args.iter()) {
+                            if let Token::Identifier(name) = param {
+                                s.define(name.into_owned(), self.evaluate(arg)?);
+                            } else {
+                                unreachable!()
+                            }
+                        }
+                        self.env.push(s);
+                        self.statement(&body)?;
+                        self.env.pop();
+                        Ok(Value::Bool(false))
+                    }
+                },
+                f => Err(From::from(ValueError::WrongType(
+                    f,
+                    Value::Fn(Fn::Native(&(|_| Value::Bool(false)))),
+                ))),
+            },
             Expression::Assignment { ident, val } => {
                 let val = self.evaluate(val)?;
                 self.assign(ident.clone(), val).and_then(|_| {
@@ -167,14 +221,12 @@ impl Interpreter {
         }
     }
 
-    pub fn print_state(&self) {
-        for (k, v) in self.scope().values.iter() {
-            println!("{}: {}", k, v);
-        }
+    fn get_var(&self, name: &str) -> Option<Value<'a>> {
+        self.get_from(self.env.len(), name)
     }
 
-    fn get_var(&self, name: &str) -> Option<Value> {
-        for scope in self.env.iter().rev() {
+    fn get_from(&self, scope: usize, name: &str) -> Option<Value<'a>> {
+        for scope in self.env[..scope].iter().rev() {
             if let x @ Some(_) = scope.get(name) {
                 return x.map(|x| x.clone());
             }
@@ -182,7 +234,7 @@ impl Interpreter {
         None
     }
 
-    fn assign<'a>(&mut self, ident: Token<'a>, val: Value) -> Result<(), InterpretError<'a>> {
+    fn assign(&mut self, ident: Token<'a>, val: Value<'a>) -> Result<(), InterpretError<'a>> {
         let name = ident.identifier();
         for scope in self.env.iter_mut().rev() {
             if scope.values.contains_key(name) {
@@ -192,11 +244,11 @@ impl Interpreter {
         Err(InterpretError::VarNotFound(ident))
     }
 
-    fn scope(&self) -> &Scope {
+    fn scope(&self) -> &Scope<'a> {
         self.env.last().unwrap()
     }
 
-    fn scope_mut(&mut self) -> &mut Scope {
+    fn scope_mut(&mut self) -> &mut Scope<'a> {
         self.env.last_mut().unwrap()
     }
 }

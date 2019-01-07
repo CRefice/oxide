@@ -35,11 +35,13 @@ fn to_str(t: &Token) -> &'static str {
         Token::Literal(_) => "literal",
         Token::Identifier(_) => "identifier",
         Token::Let => "'let'",
+        Token::Fn => "'fn'",
         Token::If => "'if'",
         Token::Else => "'else'",
         Token::While => "'while'",
         Token::And => "'and'",
         Token::Or => "'or'",
+        Token::Comma => "','",
         Token::Semicolon => "';'",
         Token::Plus => "'+'",
         Token::Minus => "'-'",
@@ -120,6 +122,7 @@ where
     pub fn declaration(&mut self) -> Result<'a, Statement<'a>> {
         match self.iter.peek() {
             Some((_, Token::Let)) => self.var_declaration(),
+            Some((_, Token::Fn)) => self.fn_declaration(),
             _ => self.statement(),
         }
     }
@@ -135,6 +138,30 @@ where
                     Ok(Statement::VarDecl {
                         ident,
                         init: self.expression()?,
+                    })
+                })
+            }
+        )
+    }
+
+    fn fn_declaration(&mut self) -> Result<'a, Statement<'a>> {
+        self.iter.next(); // Fn token
+        match_token!(
+            self.iter.next(),
+            ident@Token::Identifier(_),
+            Token::Identifier(Cow::from("identifier")),
+            {
+                match_token!(self.iter.next(), Token::LeftParen, Token::LeftParen, {
+                    let params = if let Some((_, Token::RightParen)) = self.iter.peek() {
+                        self.iter.next();
+                        Vec::new()
+                    } else {
+                        self.params()?
+                    };
+                    Ok(Statement::FnDecl {
+                        ident,
+                        params,
+                        body: Box::new(self.block()?),
                     })
                 })
             }
@@ -189,6 +216,42 @@ where
             }
         }
         Ok(Statement::Block(stmts))
+    }
+
+    fn params(&mut self) -> Result<'a, Vec<Token<'a>>> {
+        let mut vec = Vec::new();
+        match_token!(
+            self.iter.next(),
+            ident@Token::Identifier(_),
+            Token::Identifier(Cow::from("identifier")),
+            {
+                vec.push(ident);
+            }
+        );
+        loop {
+            match self.iter.next() {
+                Some((_, Token::RightParen)) => break,
+                Some((_, Token::Comma)) => {
+                    match_token!(
+                        self.iter.next(),
+                        ident@Token::Identifier(_),
+                        Token::Identifier(Cow::from("identifier")),
+                        {
+                            vec.push(ident);
+                        }
+                    );
+                }
+                Some((loc, found)) => {
+                    return Err(ParseError::InvalidToken {
+                        expected: Token::Comma,
+                        found,
+                        loc,
+                    })
+                }
+                None => return Err(ParseError::EndOfInput),
+            }
+        }
+        Ok(vec)
     }
 
     fn expr_statement(&mut self) -> Result<'a, Statement<'a>> {
@@ -307,8 +370,20 @@ where
                 let (_, token) = self.iter.next().unwrap();
                 Ok(Expression::Unary(token, Box::new(self.unary()?)))
             }
-            _ => self.primary(),
+            _ => self.call(),
         }
+    }
+
+    fn call(&mut self) -> Result<'a, Expression<'a>> {
+        let mut expr = self.primary()?;
+        if let Some((_, Token::LeftParen)) = self.iter.peek() {
+            self.iter.next();
+            expr = Expression::Call {
+                callee: Box::new(expr),
+                args: self.args()?,
+            };
+        }
+        Ok(expr)
     }
 
     fn primary(&mut self) -> Result<'a, Expression<'a>> {
@@ -324,5 +399,24 @@ where
             Some((loc, tok)) => Err(ParseError::Unexpected { tok, loc }),
             None => Err(ParseError::EndOfInput),
         }
+    }
+
+    fn args(&mut self) -> Result<'a, Vec<Expression<'a>>> {
+        let mut vec = vec![self.expression()?];
+        loop {
+            match self.iter.next() {
+                Some((_, Token::RightParen)) => break,
+                Some((_, Token::Comma)) => vec.push(self.expression()?),
+                Some((loc, found)) => {
+                    return Err(ParseError::InvalidToken {
+                        expected: Token::Comma,
+                        found,
+                        loc,
+                    })
+                }
+                None => return Err(ParseError::EndOfInput),
+            }
+        }
+        Ok(vec)
     }
 }

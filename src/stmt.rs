@@ -1,11 +1,16 @@
 use crate::expr;
 use crate::scan::Token;
 
-#[derive(Debug)]
+#[derive(Clone)]
 pub enum Statement<'a> {
     VarDecl {
         ident: Token<'a>,
         init: expr::Expression<'a>,
+    },
+    FnDecl {
+        ident: Token<'a>,
+        params: Vec<Token<'a>>,
+        body: Box<Statement<'a>>
     },
     If {
         cond: expr::Expression<'a>,

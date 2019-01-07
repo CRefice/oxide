@@ -1,72 +1,104 @@
 use self::ValueError::*;
+use crate::scan::Token;
+use crate::interpreter::Scope;
+use crate::stmt::Statement;
 use std::cmp::*;
 use std::fmt::{self, Display, Formatter};
-use std::ops::*;
+use std::ops::{self, *};
 
-#[derive(Debug, Clone)]
-pub enum Value {
+#[derive(Clone)]
+pub enum Closure<'a> {
+    Ref(usize),
+    Owned(Scope<'a>)
+}
+
+#[derive(Clone)]
+pub enum Fn<'a> {
+    Native(&'a dyn ops::Fn(Vec<Value<'a>>) -> Value<'a>),
+    User {
+        closure: usize,
+        params: Vec<Token<'a>>,
+        body: Box<Statement<'a>>,
+    },
+}
+
+impl<'a> fmt::Debug for Fn<'a> {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        match self {
+            Fn::Native(_) => write!(f, "<dyn FnMut>"),
+            Fn::User{..} => write!(f, "<UserFn>"),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum Value<'a> {
     Num(f64),
     Bool(bool),
     Str(String),
+    Fn(Fn<'a>),
 }
 
-impl Display for Value {
+impl<'a> Display for Value<'a> {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
             Value::Num(x) => write!(f, "{}", x),
             Value::Str(s) => write!(f, "{}", s),
             Value::Bool(b) => write!(f, "{}", b),
+            Value::Fn(fun) => write!(
+                f,
+                "<{}>",
+                match fun {
+                    Fn::Native(_) => "native function",
+                    Fn::User { .. } => "function",
+                }
+            ),
         }
     }
 }
 
 #[derive(Debug)]
-pub enum ValueError {
-    UnaryOp(Value, &'static str),
-    BinaryOp(Value, Value, &'static str),
-    Comparison(Value, Value),
-    WrongType(Value, Value),
+pub enum ValueError<'a> {
+    UnaryOp(Value<'a>, &'static str),
+    BinaryOp(Value<'a>, Value<'a>, &'static str),
+    Comparison(Value<'a>, Value<'a>),
+    WrongType(Value<'a>, Value<'a>),
 }
 
-impl Display for ValueError {
+impl<'a> Display for ValueError<'a> {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
             UnaryOp(val, op) => write!(
                 f,
-                "Cannot apply operator '{}' to the given operand ({:?})",
-                op, val
+                "Cannot apply operator '{}' to the given operand (val)",
+                op,
             ),
             BinaryOp(a, b, op) => write!(
                 f,
-                "Cannot apply operator '{}' to the given operands ('{:?}' and '{:?}')",
-                op, a, b
+                "Cannot apply operator '{}' to the given operands ('a' and 'b')",
+                op,
             ),
             Comparison(a, b) => write!(
                 f,
-                "Cannot compare the given operands ('{:?}' and '{:?}')",
-                a, b,
+                "Cannot compare the given operands ('a' and 'b')",
             ),
-            WrongType(a, b) => write!(
-                f,
-                "Type mismatch: expected {:?}, got {:?}",
-                a, b,
-            ),
+            WrongType(a, b) => write!(f, "Type mismatch: expected a, got b"),
         }
     }
 }
 
-impl Value {
-    pub fn as_bool(self) -> Result<bool, ValueError> {
+impl<'a> Value<'a> {
+    pub fn as_bool(self) -> Result<bool, ValueError<'a>> {
         match self {
             Value::Bool(b) => Ok(b),
-            v => Err(ValueError::WrongType(Value::Bool(false), v))
+            v => Err(WrongType(Value::Bool(false), v)),
         }
     }
 }
 
-impl Neg for Value {
-    type Output = Result<Value, ValueError>;
-    fn neg(self) -> Result<Value, ValueError> {
+impl<'a> Neg for Value<'a> {
+    type Output = Result<Value<'a>, ValueError<'a>>;
+    fn neg(self) -> Result<Value<'a>, ValueError<'a>> {
         match self {
             Value::Num(x) => Ok(Value::Num(-x)),
             x => Err(UnaryOp(x, "-")),
@@ -74,9 +106,9 @@ impl Neg for Value {
     }
 }
 
-impl Not for Value {
-    type Output = Result<Value, ValueError>;
-    fn not(self) -> Result<Value, ValueError> {
+impl<'a> Not for Value<'a> {
+    type Output = Result<Value<'a>, ValueError<'a>>;
+    fn not(self) -> Result<Value<'a>, ValueError<'a>> {
         match self {
             Value::Bool(x) => Ok(Value::Bool(!x)),
             x => Err(UnaryOp(x, "!")),
@@ -84,9 +116,9 @@ impl Not for Value {
     }
 }
 
-impl Add for Value {
-    type Output = Result<Value, ValueError>;
-    fn add(self, other: Value) -> Result<Value, ValueError> {
+impl<'a> Add for Value<'a> {
+    type Output = Result<Value<'a>, ValueError<'a>>;
+    fn add(self, other: Value<'a>) -> Result<Value<'a>, ValueError<'a>> {
         match (self, other) {
             (Value::Num(x), Value::Num(y)) => Ok(Value::Num(x + y)),
             (Value::Str(x), Value::Str(y)) => Ok(Value::Str(format!("{}{}", x, y))),
@@ -95,9 +127,9 @@ impl Add for Value {
     }
 }
 
-impl Sub for Value {
-    type Output = Result<Value, ValueError>;
-    fn sub(self, other: Value) -> Result<Value, ValueError> {
+impl<'a> Sub for Value<'a> {
+    type Output = Result<Value<'a>, ValueError<'a>>;
+    fn sub(self, other: Value<'a>) -> Result<Value<'a>, ValueError<'a>> {
         match (self, other) {
             (Value::Num(x), Value::Num(y)) => Ok(Value::Num(x - y)),
             (a, b) => Err(BinaryOp(a, b, "-")),
@@ -105,9 +137,9 @@ impl Sub for Value {
     }
 }
 
-impl Mul for Value {
-    type Output = Result<Value, ValueError>;
-    fn mul(self, other: Value) -> Result<Value, ValueError> {
+impl<'a> Mul for Value<'a> {
+    type Output = Result<Value<'a>, ValueError<'a>>;
+    fn mul(self, other: Value<'a>) -> Result<Value<'a>, ValueError<'a>> {
         match (self, other) {
             (Value::Num(x), Value::Num(y)) => Ok(Value::Num(x * y)),
             (a, b) => Err(BinaryOp(a, b, "*")),
@@ -115,9 +147,9 @@ impl Mul for Value {
     }
 }
 
-impl Div for Value {
-    type Output = Result<Value, ValueError>;
-    fn div(self, other: Value) -> Result<Value, ValueError> {
+impl<'a> Div for Value<'a> {
+    type Output = Result<Value<'a>, ValueError<'a>>;
+    fn div(self, other: Value<'a>) -> Result<Value<'a>, ValueError<'a>> {
         match (self, other) {
             (Value::Num(x), Value::Num(y)) => Ok(Value::Num(x / y)),
             (a, b) => Err(BinaryOp(a, b, "/")),
@@ -125,8 +157,8 @@ impl Div for Value {
     }
 }
 
-impl Value {
-    pub fn equals(self, other: Value) -> Result<Value, ValueError> {
+impl<'a> Value<'a> {
+    pub fn equals(self, other: Value<'a>) -> Result<Value<'a>, ValueError<'a>> {
         match (self, other) {
             (Value::Num(x), Value::Num(y)) => Ok(Value::Bool(x == y)),
             (Value::Bool(x), Value::Bool(y)) => Ok(Value::Bool(x == y)),
@@ -135,7 +167,7 @@ impl Value {
         }
     }
 
-    pub fn compare(self, other: Value) -> Result<Ordering, ValueError> {
+    pub fn compare(self, other: Value<'a>) -> Result<Ordering, ValueError<'a>> {
         match (self, other) {
             (Value::Num(x), Value::Num(y)) => Ok(x.partial_cmp(&y).unwrap_or(Ordering::Less)),
             (a, b) => Err(Comparison(a, b)),

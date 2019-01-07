@@ -11,25 +11,25 @@ use std::fs;
 use std::io;
 
 fn repl() {
-    let mut interp = Interpreter::new();
-    loop {
-        let mut input = String::new();
-        io::stdin().read_line(&mut input).unwrap();
-        let lexer = scan::Lexer::new(&input);
-        let mut parser = parse::Parser::new(lexer.map(|(l, t)| (l, t.to_owned())));
-        match parser.declaration() {
-            Ok(stmt::Statement::Expression(expr)) => match interp.evaluate(&expr) {
-                Ok(val) => println!("{}", val),
-                Err(err) => println!("Evaluation error: {}", err),
-            },
-            Ok(stmt) => if let Err(err) = interp.statement(&stmt) {
-                println!("Interpret error: {}", err)
-            }
-            Err(err) => {
-                println!("Parse error: {}", err);
-            }
-        }
-    }
+    //let mut interp = Interpreter::new();
+    //loop {
+    //    let mut input = String::new();
+    //    io::stdin().read_line(&mut input).unwrap();
+    //    let lexer = scan::Lexer::new(&input);
+    //    let mut parser = parse::Parser::new(lexer.map(|(l, t)| (l, t.to_owned())));
+    //    match parser.declaration() {
+    //        Ok(stmt::Statement::Expression(expr)) => match interp.evaluate(&expr) {
+    //            Ok(val) => println!("{}", val),
+    //            Err(err) => println!("Evaluation error: {}", err),
+    //        },
+    //        Ok(stmt) => if let Err(err) = interp.statement(&stmt) {
+    //            println!("Interpret error: {}", err)
+    //        }
+    //        Err(err) => {
+    //            println!("Parse error: {}", err);
+    //        }
+    //    }
+    //}
 }
 
 fn loc_from_index(i: usize, s: &str) -> (usize, usize) {
@@ -49,6 +49,11 @@ fn loc_from_index(i: usize, s: &str) -> (usize, usize) {
 fn from_file(file: &str) {
     let contents = fs::read_to_string(file).expect("Unable to read file");
     let mut intrp = Interpreter::new();
+    let f = |vec: Vec<value::Value>| {
+        println!("{}", vec.first().unwrap());
+        value::Value::Bool(false)
+    };
+    intrp.native_fn("print", &(f));
     let lexer = scan::Lexer::new(&contents);
     let mut parser = parse::Parser::new(lexer);
     match parser.program() {
@@ -63,7 +68,6 @@ fn from_file(file: &str) {
             println!("{}:{}: {}", line, col, e);
         }
     }
-    intrp.print_state();
 }
 
 fn main() {

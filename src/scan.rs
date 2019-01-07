@@ -3,14 +3,16 @@ use std::borrow::Cow;
 
 #[derive(Debug, Clone)]
 pub enum Token<'a> {
-    Literal(Value),
+    Literal(Value<'a>),
     Identifier(Cow<'a, str>),
     Let,
+    Fn,
     If,
     Else,
     While,
     And,
     Or,
+    Comma,
     Semicolon,
     Plus,
     Minus,
@@ -114,6 +116,7 @@ impl<'a> Lexer<'a> {
             let s = self.advance_while(|c| c.is_alphanumeric());
             match s {
                 "let" => Some(Token::Let),
+                "fn" => Some(Token::Fn),
                 "if" => Some(Token::If),
                 "else" => Some(Token::Else),
                 "while" => Some(Token::While),
@@ -126,6 +129,7 @@ impl<'a> Lexer<'a> {
         } else {
             self.advance(1);
             match c {
+                ',' => Some(Token::Comma),
                 ';' => Some(Token::Semicolon),
                 '"' => {
                     let s = self.advance_while(|c| *c != '"');
