@@ -8,6 +8,7 @@ mod value;
 
 use crate::interpreter::Interpreter;
 use std::env;
+use std::io;
 use std::fs;
 
 fn repl() {
@@ -51,9 +52,15 @@ fn from_file(file: &str) {
     let mut intrp = Interpreter::new();
     let f = function!(a, {
         println!("{}", a);
-        value::Value::Bool(false)
+        value::Value::Void
     });
     intrp.native_fn("print", 1, &f);
+    let f = function!(, {
+        let mut s = String::new();
+        io::stdin().read_line(&mut s).unwrap();
+        value::Value::Num(s.trim().parse().unwrap())
+    });
+    intrp.native_fn("read", 0, &f);
     let lexer = scan::Lexer::new(&contents);
     let mut parser = parse::Parser::new(lexer);
     match parser.program() {

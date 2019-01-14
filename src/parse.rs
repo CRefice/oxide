@@ -201,12 +201,14 @@ where
 
     fn return_statement(&mut self) -> Result<'a, Statement<'a>> {
         self.iter.next(); // Return token
-        Ok(Statement::Return(if let Some((_, Token::Semicolon)) = self.iter.peek() {
-            self.iter.next();
-            None
-        } else {
-            Some(self.expression()?)
-        }))
+        Ok(Statement::Return(
+            if let Some((_, Token::Semicolon)) = self.iter.peek() {
+                self.iter.next();
+                None
+            } else {
+                Some(self.expression()?)
+            },
+        ))
     }
 
     fn block(&mut self) -> Result<'a, Statement<'a>> {
@@ -390,9 +392,15 @@ where
         let mut expr = self.primary()?;
         if let Some((_, Token::LeftParen)) = self.iter.peek() {
             self.iter.next();
+            let args = if let Some((_, Token::RightParen)) = self.iter.peek() {
+                self.iter.next();
+                Vec::new()
+            } else {
+                self.args()?
+            };
             expr = Expression::Call {
                 callee: Box::new(expr),
-                args: self.args()?,
+                args,
             };
         }
         Ok(expr)

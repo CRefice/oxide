@@ -20,7 +20,7 @@ pub enum Fn<'a> {
 
 #[macro_export]
 macro_rules! function {
-    ( $($x:ident)*, $body:expr ) => {
+    ( $($x:ident),* , $body:expr ) => {
             |vec: Vec<value::Value>| {
                 let mut _i = vec.into_iter();
                 $(
