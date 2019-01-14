@@ -5,6 +5,33 @@ use std::cmp::*;
 use std::fmt::{self, Display, Formatter};
 use std::ops::{self, *};
 
+#[derive(Debug)]
+pub enum ValueError<'a> {
+    UnaryOp(Value<'a>, &'static str),
+    BinaryOp(Value<'a>, Value<'a>, &'static str),
+    Comparison(Value<'a>, Value<'a>),
+    WrongType(Value<'a>, Value<'a>),
+}
+
+impl<'a> Display for ValueError<'a> {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        match self {
+            UnaryOp(val, op) => write!(
+                f,
+                "Cannot apply operator '{}' to the given operand (val)",
+                op,
+            ),
+            BinaryOp(a, b, op) => write!(
+                f,
+                "Cannot apply operator '{}' to the given operands ('a' and 'b')",
+                op,
+            ),
+            Comparison(a, b) => write!(f, "Cannot compare the given operands ('a' and 'b')",),
+            WrongType(a, b) => write!(f, "Type mismatch: expected a, got b"),
+        }
+    }
+}
+
 #[derive(Clone)]
 pub enum Fn<'a> {
     Native {
@@ -68,38 +95,13 @@ impl<'a> Display for Value<'a> {
     }
 }
 
-#[derive(Debug)]
-pub enum ValueError<'a> {
-    UnaryOp(Value<'a>, &'static str),
-    BinaryOp(Value<'a>, Value<'a>, &'static str),
-    Comparison(Value<'a>, Value<'a>),
-    WrongType(Value<'a>, Value<'a>),
-}
-
-impl<'a> Display for ValueError<'a> {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        match self {
-            UnaryOp(val, op) => write!(
-                f,
-                "Cannot apply operator '{}' to the given operand (val)",
-                op,
-            ),
-            BinaryOp(a, b, op) => write!(
-                f,
-                "Cannot apply operator '{}' to the given operands ('a' and 'b')",
-                op,
-            ),
-            Comparison(a, b) => write!(f, "Cannot compare the given operands ('a' and 'b')",),
-            WrongType(a, b) => write!(f, "Type mismatch: expected a, got b"),
-        }
-    }
-}
-
 impl<'a> Value<'a> {
-    pub fn as_bool(self) -> Result<bool, ValueError<'a>> {
+    pub fn is_truthy(&self) -> Result<bool, ValueError<'a>> {
         match self {
-            Value::Bool(b) => Ok(b),
-            v => Err(WrongType(Value::Bool(false), v)),
+            Value::Num(x) => Ok(*x != 0.0),
+            Value::Str(s) => Ok(!s.is_empty()),
+            Value::Bool(b) => Ok(*b),
+            v => Err(WrongType(Value::Bool(false), v.clone())),
         }
     }
 }
@@ -130,6 +132,7 @@ impl<'a> Add for Value<'a> {
         match (self, other) {
             (Value::Num(x), Value::Num(y)) => Ok(Value::Num(x + y)),
             (Value::Str(x), Value::Str(y)) => Ok(Value::Str(format!("{}{}", x, y))),
+            (Value::Str(x), Value::Num(y)) => Ok(Value::Str(format!("{}{}", x, y))),
             (a, b) => Err(BinaryOp(a, b, "+")),
         }
     }

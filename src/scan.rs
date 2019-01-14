@@ -42,13 +42,6 @@ impl<'a> Token<'a> {
             x => panic!("Tried to get identifier out of {:?}", x),
         }
     }
-
-    pub fn to_owned(self) -> Self {
-        match self {
-            Token::Identifier(name) => Token::Identifier(Cow::from(name.into_owned())),
-            _ => self,
-        }
-    }
 }
 
 #[derive(Clone)]
@@ -111,8 +104,8 @@ impl<'a> Lexer<'a> {
             let s = &self.unread[..i];
             self.advance(i);
             s.parse::<f64>().ok().map(|x| Token::Literal(Value::Num(x)))
-        } else if c.is_alphabetic() {
-            let s = self.advance_while(|c| c.is_alphanumeric());
+        } else if c.is_alphabetic() || c == '_' {
+            let s = self.advance_while(|c| c.is_alphanumeric() || *c == '_');
             match s {
                 "let" => Some(Token::Let),
                 "fn" => Some(Token::Fn),

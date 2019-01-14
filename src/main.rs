@@ -11,28 +11,6 @@ use std::env;
 use std::io;
 use std::fs;
 
-fn repl() {
-    //let mut interp = Interpreter::new();
-    //loop {
-    //    let mut input = String::new();
-    //    io::stdin().read_line(&mut input).unwrap();
-    //    let lexer = scan::Lexer::new(&input);
-    //    let mut parser = parse::Parser::new(lexer.map(|(l, t)| (l, t.to_owned())));
-    //    match parser.declaration() {
-    //        Ok(stmt::Statement::Expression(expr)) => match interp.evaluate(&expr) {
-    //            Ok(val) => println!("{}", val),
-    //            Err(err) => println!("Evaluation error: {}", err),
-    //        },
-    //        Ok(stmt) => if let Err(err) = interp.statement(&stmt) {
-    //            println!("Interpret error: {}", err)
-    //        }
-    //        Err(err) => {
-    //            println!("Parse error: {}", err);
-    //        }
-    //    }
-    //}
-}
-
 fn loc_from_index(i: usize, s: &str) -> (usize, usize) {
     let mut line = 1;
     let mut col = 1;
@@ -58,7 +36,13 @@ fn from_file(file: &str) {
     let f = function!(, {
         let mut s = String::new();
         io::stdin().read_line(&mut s).unwrap();
-        value::Value::Num(s.trim().parse().unwrap())
+        match s.trim().parse() {
+            Ok(x) => value::Value::Num(x),
+            Err(e) => {
+                println!("Parse error: {}", e);
+                std::process::exit(1);
+            }
+        }
     });
     intrp.native_fn("read", 0, &f);
     let lexer = scan::Lexer::new(&contents);
@@ -81,6 +65,7 @@ fn main() {
     if let Some(file) = env::args().skip(1).next() {
         from_file(&file);
     } else {
-        repl();
+        println!("Usage: reel [FILE]");
+        std::process::exit(1);
     }
 }

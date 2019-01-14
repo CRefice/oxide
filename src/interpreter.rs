@@ -39,7 +39,9 @@ impl<'a> Display for InterpretError<'a> {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
             InterpretError::Value(err) => write!(f, "{}", err),
-            InterpretError::VarNotFound(name) => write!(f, "Variable '{:?}' not found", name),
+            InterpretError::VarNotFound(name) => {
+                write!(f, "Variable '{}' not found", name.identifier())
+            }
             InterpretError::WrongArgCount { expected, found } => write!(
                 f,
                 "Wrong number of arguments supplied to function: found {}, expected {}",
@@ -105,7 +107,7 @@ impl<'a> Interpreter<'a> {
                 self.evaluate(expr)?;
             }),
             Statement::If { cond, succ, fail } => Ok({
-                let cond = self.evaluate(cond)?.as_bool()?;
+                let cond = self.evaluate(cond)?.is_truthy()?;
                 if cond {
                     self.statement(succ)?;
                 } else if let Some(fail) = fail {
@@ -113,7 +115,7 @@ impl<'a> Interpreter<'a> {
                 }
             }),
             Statement::While { cond, stmt } => Ok({
-                while self.evaluate(cond)?.as_bool()? {
+                while self.evaluate(cond)?.is_truthy()? {
                     self.statement(stmt)?;
                 }
             }),
@@ -162,7 +164,10 @@ impl<'a> Interpreter<'a> {
                         body,
                     } => {
                         if params.len() != args.len() {
-                            panic!("Wrong number of arguments!")
+                            return Err(InterpretError::WrongArgCount {
+                                expected: params.len(),
+                                found: args.len(),
+                            });
                         }
                         let mut s = Scope::new();
                         for (param, arg) in params.into_iter().zip(args.iter()) {
@@ -205,10 +210,10 @@ impl<'a> Interpreter<'a> {
                 }
             }
             Expression::Logical(left, op, right) => {
-                let val = (self.evaluate(left)?).as_bool()?;
+                let val = (self.evaluate(left)?).is_truthy()?;
                 match op {
-                    Token::And => Ok(Value::Bool(val && self.evaluate(right)?.as_bool()?)),
-                    Token::Or => Ok(Value::Bool(val || self.evaluate(right)?.as_bool()?)),
+                    Token::And => Ok(Value::Bool(val && self.evaluate(right)?.is_truthy()?)),
+                    Token::Or => Ok(Value::Bool(val || self.evaluate(right)?.is_truthy()?)),
                     _ => panic!("Unrecognized logical operator"),
                 }
             }
