@@ -3,12 +3,12 @@ mod interpreter;
 mod parse;
 mod stmt;
 mod scan;
+#[macro_use]
 mod value;
 
 use crate::interpreter::Interpreter;
 use std::env;
 use std::fs;
-use std::io;
 
 fn repl() {
     //let mut interp = Interpreter::new();
@@ -49,11 +49,11 @@ fn loc_from_index(i: usize, s: &str) -> (usize, usize) {
 fn from_file(file: &str) {
     let contents = fs::read_to_string(file).expect("Unable to read file");
     let mut intrp = Interpreter::new();
-    let f = |vec: Vec<value::Value>| {
-        println!("{}", vec.first().unwrap());
+    let f = function!(a, {
+        println!("{}", a);
         value::Value::Bool(false)
-    };
-    intrp.native_fn("print", &(f));
+    });
+    intrp.native_fn("print", 1, &f);
     let lexer = scan::Lexer::new(&contents);
     let mut parser = parse::Parser::new(lexer);
     match parser.program() {

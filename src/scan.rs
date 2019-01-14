@@ -12,6 +12,7 @@ pub enum Token<'a> {
     While,
     And,
     Or,
+    Return,
     Comma,
     Semicolon,
     Plus,
@@ -44,10 +45,8 @@ impl<'a> Token<'a> {
 
     pub fn to_owned(self) -> Self {
         match self {
-            Token::Identifier(name) => {
-                Token::Identifier(Cow::from(name.into_owned()))
-            }
-            _ => self
+            Token::Identifier(name) => Token::Identifier(Cow::from(name.into_owned())),
+            _ => self,
         }
     }
 }
@@ -122,6 +121,7 @@ impl<'a> Lexer<'a> {
                 "while" => Some(Token::While),
                 "and" => Some(Token::And),
                 "or" => Some(Token::Or),
+                "return" => Some(Token::Return),
                 "true" => Some(Token::Literal(Value::Bool(true))),
                 "false" => Some(Token::Literal(Value::Bool(true))),
                 _ => Some(Token::Identifier(Cow::from(s))),

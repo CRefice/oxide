@@ -1,7 +1,7 @@
 use crate::expr::Expression;
 use crate::scan::Token;
 use crate::stmt::Statement;
-use crate::value::{Closure, Fn, Value, ValueError};
+use crate::value::{Fn, Value, ValueError};
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt::{self, Display, Formatter};
@@ -32,6 +32,7 @@ impl<'a> Scope<'a> {
 pub enum InterpretError<'a> {
     Value(ValueError<'a>),
     VarNotFound(Token<'a>),
+    WrongArgCount { expected: usize, found: usize },
 }
 
 impl<'a> Display for InterpretError<'a> {
@@ -39,6 +40,11 @@ impl<'a> Display for InterpretError<'a> {
         match self {
             InterpretError::Value(err) => write!(f, "{}", err),
             InterpretError::VarNotFound(name) => write!(f, "Variable '{:?}' not found", name),
+            InterpretError::WrongArgCount { expected, found } => write!(
+                f,
+                "Wrong number of arguments supplied to function: found {}, expected {}",
+                found, expected
+            ),
         }
     }
 }
@@ -51,23 +57,33 @@ impl<'a> From<ValueError<'a>> for InterpretError<'a> {
 
 pub struct Interpreter<'a> {
     env: Vec<Scope<'a>>,
+    ret: Option<Value<'a>>,
 }
 
 impl<'a> Interpreter<'a> {
     pub fn new() -> Interpreter<'a> {
         Interpreter {
             env: vec![Scope::new()],
+            ret: None,
         }
     }
 
-    pub fn native_fn(&mut self, name: &str, f: &'a dyn ops::Fn(Vec<Value<'a>>) -> Value<'a>) {
+    pub fn native_fn(
+        &mut self,
+        name: &str,
+        arity: usize,
+        f: &'a dyn ops::Fn(Vec<Value<'a>>) -> Value<'a>,
+    ) {
         self.env
             .first_mut()
             .unwrap()
-            .define(name.to_owned(), Value::Fn(Fn::Native(f)));
+            .define(name.to_owned(), Value::Fn(Fn::Native { arity, f }));
     }
 
     pub fn statement(&mut self, stmt: &Statement<'a>) -> Result<(), InterpretError<'a>> {
+        if self.ret.is_some() {
+            return Ok(());
+        };
         match stmt {
             Statement::VarDecl { ident, init } => Ok({
                 let val = self.evaluate(init)?;
@@ -101,6 +117,13 @@ impl<'a> Interpreter<'a> {
                     self.statement(stmt)?;
                 }
             }),
+            Statement::Return(expr) => Ok({
+                self.ret = Some(
+                    expr.as_ref()
+                        .map(|e| self.evaluate(e))
+                        .unwrap_or(Ok(Value::Void))?,
+                );
+            }),
             Statement::Block(stmts) => Ok({
                 self.env.push(Scope::new());
                 for s in stmts {
@@ -120,10 +143,19 @@ impl<'a> Interpreter<'a> {
                 .ok_or(InterpretError::VarNotFound(var.clone())),
             Expression::Call { callee, args } => match self.evaluate(callee)? {
                 Value::Fn(f) => match f {
-                    Fn::Native(f) => Ok(f(args
-                        .into_iter()
-                        .map(|e| self.evaluate(e).unwrap())
-                        .collect())),
+                    Fn::Native { arity, f } => {
+                        if args.len() != arity {
+                            Err(InterpretError::WrongArgCount {
+                                expected: arity,
+                                found: args.len(),
+                            })
+                        } else {
+                            Ok(f(args
+                                .into_iter()
+                                .map(|e| self.evaluate(e).unwrap())
+                                .collect()))
+                        }
+                    }
                     Fn::User {
                         closure,
                         params,
@@ -143,12 +175,17 @@ impl<'a> Interpreter<'a> {
                         self.env.push(s);
                         self.statement(&body)?;
                         self.env.pop();
-                        Ok(Value::Bool(false))
+                        let ret = self.ret.as_ref().cloned().unwrap_or(Value::Void);
+                        self.ret = None;
+                        Ok(ret)
                     }
                 },
                 f => Err(From::from(ValueError::WrongType(
                     f,
-                    Value::Fn(Fn::Native(&(|_| Value::Bool(false)))),
+                    Value::Fn(Fn::Native {
+                        arity: 0,
+                        f: &(|_| Value::Bool(false)),
+                    }),
                 ))),
             },
             Expression::Assignment { ident, val } => {

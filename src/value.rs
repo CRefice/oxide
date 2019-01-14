@@ -1,20 +1,16 @@
 use self::ValueError::*;
 use crate::scan::Token;
-use crate::interpreter::Scope;
 use crate::stmt::Statement;
 use std::cmp::*;
 use std::fmt::{self, Display, Formatter};
 use std::ops::{self, *};
 
 #[derive(Clone)]
-pub enum Closure<'a> {
-    Ref(usize),
-    Owned(Scope<'a>)
-}
-
-#[derive(Clone)]
 pub enum Fn<'a> {
-    Native(&'a dyn ops::Fn(Vec<Value<'a>>) -> Value<'a>),
+    Native {
+        arity: usize,
+        f: &'a dyn ops::Fn(Vec<Value<'a>>) -> Value<'a>,
+    },
     User {
         closure: usize,
         params: Vec<Token<'a>>,
@@ -22,17 +18,31 @@ pub enum Fn<'a> {
     },
 }
 
+#[macro_export]
+macro_rules! function {
+    ( $($x:ident)*, $body:expr ) => {
+            |vec: Vec<value::Value>| {
+                let mut _i = vec.into_iter();
+                $(
+                    let $x = _i.next().unwrap();
+                )*
+                $body
+            };
+    };
+}
+
 impl<'a> fmt::Debug for Fn<'a> {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
-            Fn::Native(_) => write!(f, "<dyn FnMut>"),
-            Fn::User{..} => write!(f, "<UserFn>"),
+            Fn::Native { .. } => write!(f, "<NativeFn>"),
+            Fn::User { .. } => write!(f, "<UserFn>"),
         }
     }
 }
 
 #[derive(Clone, Debug)]
 pub enum Value<'a> {
+    Void,
     Num(f64),
     Bool(bool),
     Str(String),
@@ -42,6 +52,7 @@ pub enum Value<'a> {
 impl<'a> Display for Value<'a> {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
+            Value::Void => write!(f, "void"),
             Value::Num(x) => write!(f, "{}", x),
             Value::Str(s) => write!(f, "{}", s),
             Value::Bool(b) => write!(f, "{}", b),
@@ -49,7 +60,7 @@ impl<'a> Display for Value<'a> {
                 f,
                 "<{}>",
                 match fun {
-                    Fn::Native(_) => "native function",
+                    Fn::Native { .. } => "native function",
                     Fn::User { .. } => "function",
                 }
             ),
@@ -78,10 +89,7 @@ impl<'a> Display for ValueError<'a> {
                 "Cannot apply operator '{}' to the given operands ('a' and 'b')",
                 op,
             ),
-            Comparison(a, b) => write!(
-                f,
-                "Cannot compare the given operands ('a' and 'b')",
-            ),
+            Comparison(a, b) => write!(f, "Cannot compare the given operands ('a' and 'b')",),
             WrongType(a, b) => write!(f, "Type mismatch: expected a, got b"),
         }
     }

@@ -21,6 +21,7 @@ pub enum Statement<'a> {
         cond: expr::Expression<'a>,
         stmt: Box<Statement<'a>>,
     },
+    Return(Option<expr::Expression<'a>>),
     Expression(expr::Expression<'a>),
     Block(Vec<Statement<'a>>),
 }

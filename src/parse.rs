@@ -41,6 +41,7 @@ fn to_str(t: &Token) -> &'static str {
         Token::While => "'while'",
         Token::And => "'and'",
         Token::Or => "'or'",
+        Token::Return => "'return'",
         Token::Comma => "','",
         Token::Semicolon => "';'",
         Token::Plus => "'+'",
@@ -172,6 +173,7 @@ where
         match self.iter.peek() {
             Some((_, Token::If)) => self.if_statement(),
             Some((_, Token::While)) => self.while_statement(),
+            Some((_, Token::Return)) => self.return_statement(),
             Some((_, Token::LeftBrace)) => self.block(),
             _ => self.expr_statement(),
         }
@@ -195,6 +197,16 @@ where
         let cond = self.expression()?;
         let stmt = Box::new(self.block()?);
         Ok(Statement::While { cond, stmt })
+    }
+
+    fn return_statement(&mut self) -> Result<'a, Statement<'a>> {
+        self.iter.next(); // Return token
+        Ok(Statement::Return(if let Some((_, Token::Semicolon)) = self.iter.peek() {
+            self.iter.next();
+            None
+        } else {
+            Some(self.expression()?)
+        }))
     }
 
     fn block(&mut self) -> Result<'a, Statement<'a>> {
