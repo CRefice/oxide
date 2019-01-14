@@ -1,9 +1,12 @@
 use self::ValueError::*;
+use crate::interpreter::Scope;
 use crate::scan::Token;
 use crate::stmt::Statement;
+use std::cell::RefCell;
 use std::cmp::*;
 use std::fmt::{self, Display, Formatter};
 use std::ops::{self, *};
+use std::rc::Rc;
 
 #[derive(Debug)]
 pub enum ValueError<'a> {
@@ -39,22 +42,35 @@ pub enum Fn<'a> {
         f: &'a dyn ops::Fn(Vec<Value<'a>>) -> Value<'a>,
     },
     User {
-        closure: usize,
+        closure: Rc<RefCell<Scope<'a>>>,
         params: Vec<Token<'a>>,
         body: Box<Statement<'a>>,
     },
 }
 
+macro_rules! replace_expr {
+    ($_t:tt $sub:expr) => {
+        $sub
+    };
+}
+
+macro_rules! count_ids {
+        ($($tts:ident)*) => {<[()]>::len(&[$(replace_expr!($tts ())),*])};
+}
+
 #[macro_export]
 macro_rules! function {
     ( $($x:ident),* , $body:expr ) => {
-            |vec: Vec<value::Value>| {
+            value::Value::Fn(value::Fn::Native{
+                f: &|vec: Vec<value::Value>| {
                 let mut _i = vec.into_iter();
                 $(
                     let $x = _i.next().unwrap();
                 )*
                 $body
-            };
+            },
+            arity: count_ids!($($x)*)
+            })
     };
 }
 

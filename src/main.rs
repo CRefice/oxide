@@ -10,6 +10,8 @@ use crate::interpreter::Interpreter;
 use std::env;
 use std::io;
 use std::fs;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 fn loc_from_index(i: usize, s: &str) -> (usize, usize) {
     let mut line = 1;
@@ -28,12 +30,12 @@ fn loc_from_index(i: usize, s: &str) -> (usize, usize) {
 fn from_file(file: &str) {
     let contents = fs::read_to_string(file).expect("Unable to read file");
     let mut intrp = Interpreter::new();
-    let f = function!(a, {
+    let mut scope = interpreter::Scope::new();
+    scope.define("print", function!(a, {
         println!("{}", a);
         value::Value::Void
-    });
-    intrp.native_fn("print", 1, &f);
-    let f = function!(, {
+    }));
+    scope.define("read", function!(, {
         let mut s = String::new();
         io::stdin().read_line(&mut s).unwrap();
         match s.trim().parse() {
@@ -43,13 +45,13 @@ fn from_file(file: &str) {
                 std::process::exit(1);
             }
         }
-    });
-    intrp.native_fn("read", 0, &f);
+    }));
     let lexer = scan::Lexer::new(&contents);
     let mut parser = parse::Parser::new(lexer);
+    let handle = Rc::new(RefCell::new(scope));
     match parser.program() {
         Ok(stmts) => for s in stmts.iter() {
-            if let Err(e) = intrp.statement(&s) {
+            if let Err(e) = intrp.statement(&s, handle.clone()) {
                 println!("Interpret error: {}", e);
             }
         }

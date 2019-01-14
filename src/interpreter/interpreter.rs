@@ -1,32 +1,13 @@
+use super::Scope;
+
 use crate::expr::Expression;
 use crate::scan::Token;
 use crate::stmt::Statement;
 use crate::value::{Fn, Value, ValueError};
+use std::cell::RefCell;
 use std::cmp::Ordering;
-use std::collections::HashMap;
 use std::fmt::{self, Display, Formatter};
-use std::ops;
-
-#[derive(Clone)]
-pub struct Scope<'a> {
-    values: HashMap<String, Value<'a>>,
-}
-
-impl<'a> Scope<'a> {
-    fn new() -> Self {
-        Scope {
-            values: HashMap::new(),
-        }
-    }
-
-    fn define(&mut self, name: String, val: Value<'a>) {
-        self.values.insert(name, val);
-    }
-
-    fn get(&self, name: &str) -> Option<&Value<'a>> {
-        self.values.get(name)
-    }
-}
+use std::rc::Rc;
 
 #[derive(Debug)]
 pub enum InterpretError<'a> {
@@ -58,38 +39,26 @@ impl<'a> From<ValueError<'a>> for InterpretError<'a> {
 }
 
 pub struct Interpreter<'a> {
-    env: Vec<Scope<'a>>,
     ret: Option<Value<'a>>,
 }
 
 impl<'a> Interpreter<'a> {
     pub fn new() -> Interpreter<'a> {
-        Interpreter {
-            env: vec![Scope::new()],
-            ret: None,
-        }
+        Interpreter { ret: None }
     }
 
-    pub fn native_fn(
+    pub fn statement(
         &mut self,
-        name: &str,
-        arity: usize,
-        f: &'a dyn ops::Fn(Vec<Value<'a>>) -> Value<'a>,
-    ) {
-        self.env
-            .first_mut()
-            .unwrap()
-            .define(name.to_owned(), Value::Fn(Fn::Native { arity, f }));
-    }
-
-    pub fn statement(&mut self, stmt: &Statement<'a>) -> Result<(), InterpretError<'a>> {
+        stmt: &Statement<'a>,
+        scope: Rc<RefCell<Scope<'a>>>,
+    ) -> Result<(), InterpretError<'a>> {
         if self.ret.is_some() {
             return Ok(());
         };
         match stmt {
             Statement::VarDecl { ident, init } => Ok({
-                let val = self.evaluate(init)?;
-                self.scope_mut().define(ident.identifier().to_owned(), val);
+                let val = self.evaluate(init, scope.clone())?;
+                scope.borrow_mut().define(ident.identifier(), val);
             }),
             Statement::FnDecl {
                 ident,
@@ -97,53 +66,57 @@ impl<'a> Interpreter<'a> {
                 body,
             } => Ok({
                 let f = Value::Fn(Fn::User {
-                    closure: 1,
+                    closure: scope.clone(),
                     params: params.clone(),
                     body: body.clone(),
                 });
-                self.scope_mut().define(ident.identifier().to_owned(), f);
+                scope.borrow_mut().define(ident.identifier(), f);
             }),
             Statement::Expression(expr) => Ok({
-                self.evaluate(expr)?;
+                self.evaluate(expr, scope)?;
             }),
             Statement::If { cond, succ, fail } => Ok({
-                let cond = self.evaluate(cond)?.is_truthy()?;
+                let cond = self.evaluate(cond, scope.clone())?.is_truthy()?;
                 if cond {
-                    self.statement(succ)?;
+                    self.statement(succ, scope)?;
                 } else if let Some(fail) = fail {
-                    self.statement(fail)?;
+                    self.statement(fail, scope)?;
                 }
             }),
             Statement::While { cond, stmt } => Ok({
-                while self.evaluate(cond)?.is_truthy()? {
-                    self.statement(stmt)?;
+                while self.evaluate(cond, scope.clone())?.is_truthy()? {
+                    self.statement(stmt, scope.clone())?;
                 }
             }),
             Statement::Return(expr) => Ok({
                 self.ret = Some(
                     expr.as_ref()
-                        .map(|e| self.evaluate(e))
+                        .map(|e| self.evaluate(e, scope))
                         .unwrap_or(Ok(Value::Void))?,
                 );
             }),
             Statement::Block(stmts) => Ok({
-                self.env.push(Scope::new());
+                let scope = Rc::new(RefCell::new(Scope::from(scope.clone())));
                 for s in stmts {
-                    self.statement(s)?;
+                    self.statement(s, scope.clone())?;
                 }
-                self.env.pop();
             }),
         }
     }
 
-    pub fn evaluate(&mut self, ex: &Expression<'a>) -> Result<Value<'a>, InterpretError<'a>> {
+    pub fn evaluate(
+        &mut self,
+        ex: &Expression<'a>,
+        scope: Rc<RefCell<Scope<'a>>>,
+    ) -> Result<Value<'a>, InterpretError<'a>> {
         let cvterr = |e| InterpretError::from(e);
         match ex {
             Expression::Literal(x) => Ok(x.clone()),
-            Expression::Variable(var) => self
-                .get_var(var.identifier())
+            Expression::Variable(var) => scope
+                .borrow()
+                .get(var.identifier())
                 .ok_or(InterpretError::VarNotFound(var.clone())),
-            Expression::Call { callee, args } => match self.evaluate(callee)? {
+            Expression::Call { callee, args } => match self.evaluate(callee, scope.clone())? {
                 Value::Fn(f) => match f {
                     Fn::Native { arity, f } => {
                         if args.len() != arity {
@@ -152,10 +125,11 @@ impl<'a> Interpreter<'a> {
                                 found: args.len(),
                             })
                         } else {
-                            Ok(f(args
-                                .into_iter()
-                                .map(|e| self.evaluate(e).unwrap())
-                                .collect()))
+                            let mut v = Vec::new();
+                            for arg in args.into_iter() {
+                                v.push(self.evaluate(arg, scope.clone())?);
+                            }
+                            Ok(f(v))
                         }
                     }
                     Fn::User {
@@ -169,19 +143,12 @@ impl<'a> Interpreter<'a> {
                                 found: args.len(),
                             });
                         }
-                        let mut s = Scope::new();
+                        let mut s = Scope::from(closure);
                         for (param, arg) in params.into_iter().zip(args.iter()) {
-                            if let Token::Identifier(name) = param {
-                                s.define(name.into_owned(), self.evaluate(arg)?);
-                            } else {
-                                unreachable!()
-                            }
+                            s.define(param.identifier(), self.evaluate(arg, scope.clone())?);
                         }
-                        self.env.push(s);
-                        self.statement(&body)?;
-                        self.env.pop();
-                        let ret = self.ret.as_ref().cloned().unwrap_or(Value::Void);
-                        self.ret = None;
+                        self.statement(&body, Rc::new(RefCell::new(s)))?;
+                        let ret = self.ret.take().as_ref().cloned().unwrap_or(Value::Void);
                         Ok(ret)
                     }
                 },
@@ -194,15 +161,16 @@ impl<'a> Interpreter<'a> {
                 ))),
             },
             Expression::Assignment { ident, val } => {
-                let val = self.evaluate(val)?;
-                self.assign(ident.clone(), val).and_then(|_| {
-                    self.get_var(ident.identifier())
-                        .ok_or(InterpretError::VarNotFound(ident.clone()))
-                })
+                let val = self.evaluate(val, scope.clone())?;
+                scope
+                    .clone()
+                    .borrow_mut()
+                    .assign(ident.identifier(), val)
+                    .ok_or(InterpretError::VarNotFound(ident.clone()))
             }
-            Expression::Grouping(b) => self.evaluate(b),
+            Expression::Grouping(b) => self.evaluate(b, scope),
             Expression::Unary(op, right) => {
-                let val = self.evaluate(right)?;
+                let val = self.evaluate(right, scope)?;
                 match op {
                     Token::Minus => (-val).map_err(cvterr),
                     Token::Bang => (!val).map_err(cvterr),
@@ -210,16 +178,20 @@ impl<'a> Interpreter<'a> {
                 }
             }
             Expression::Logical(left, op, right) => {
-                let val = (self.evaluate(left)?).is_truthy()?;
+                let val = (self.evaluate(left, scope.clone())?).is_truthy()?;
                 match op {
-                    Token::And => Ok(Value::Bool(val && self.evaluate(right)?.is_truthy()?)),
-                    Token::Or => Ok(Value::Bool(val || self.evaluate(right)?.is_truthy()?)),
+                    Token::And => Ok(Value::Bool(
+                        val && self.evaluate(right, scope)?.is_truthy()?,
+                    )),
+                    Token::Or => Ok(Value::Bool(
+                        val || self.evaluate(right, scope)?.is_truthy()?,
+                    )),
                     _ => panic!("Unrecognized logical operator"),
                 }
             }
             Expression::Binary(left, op, right) => {
-                let left = self.evaluate(left)?;
-                let right = self.evaluate(right)?;
+                let left = self.evaluate(left, scope.clone())?;
+                let right = self.evaluate(right, scope.clone())?;
                 match op {
                     Token::Plus => (left + right).map_err(cvterr),
                     Token::Minus => (left - right).map_err(cvterr),
@@ -261,36 +233,5 @@ impl<'a> Interpreter<'a> {
                 }
             }
         }
-    }
-
-    fn get_var(&self, name: &str) -> Option<Value<'a>> {
-        self.get_from(self.env.len(), name)
-    }
-
-    fn get_from(&self, scope: usize, name: &str) -> Option<Value<'a>> {
-        for scope in self.env[..scope].iter().rev() {
-            if let x @ Some(_) = scope.get(name) {
-                return x.map(|x| x.clone());
-            }
-        }
-        None
-    }
-
-    fn assign(&mut self, ident: Token<'a>, val: Value<'a>) -> Result<(), InterpretError<'a>> {
-        let name = ident.identifier();
-        for scope in self.env.iter_mut().rev() {
-            if scope.values.contains_key(name) {
-                return Ok(scope.define(name.to_string(), val));
-            }
-        }
-        Err(InterpretError::VarNotFound(ident))
-    }
-
-    fn scope(&self) -> &Scope<'a> {
-        self.env.last().unwrap()
-    }
-
-    fn scope_mut(&mut self) -> &mut Scope<'a> {
-        self.env.last_mut().unwrap()
     }
 }

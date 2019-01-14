@@ -390,7 +390,7 @@ where
 
     fn call(&mut self) -> Result<'a, Expression<'a>> {
         let mut expr = self.primary()?;
-        if let Some((_, Token::LeftParen)) = self.iter.peek() {
+        while let Some((_, Token::LeftParen)) = self.iter.peek() {
             self.iter.next();
             let args = if let Some((_, Token::RightParen)) = self.iter.peek() {
                 self.iter.next();
