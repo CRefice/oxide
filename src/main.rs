@@ -2,7 +2,7 @@ mod expr;
 mod interpreter;
 mod parse;
 mod stmt;
-mod scan;
+mod token;
 #[macro_use]
 mod value;
 
@@ -46,7 +46,7 @@ fn from_file(file: &str) {
             }
         }
     }));
-    let lexer = scan::Lexer::new(&contents);
+    let lexer = token::Lexer::new(&contents);
     let mut parser = parse::Parser::new(lexer);
     let handle = Rc::new(RefCell::new(scope));
     match parser.program() {

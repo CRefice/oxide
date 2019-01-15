@@ -1,5 +1,5 @@
 use crate::expr;
-use crate::scan::Token;
+use crate::token::Token;
 
 #[derive(Clone)]
 pub enum Statement<'a> {

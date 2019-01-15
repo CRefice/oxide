@@ -1,4 +1,4 @@
-use crate::scan::Token;
+use crate::token::Token;
 use crate::value::Value;
 
 #[derive(Clone)]

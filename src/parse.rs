@@ -1,21 +1,16 @@
 use crate::expr::Expression;
-use crate::scan::Token;
 use crate::stmt::Statement;
-use std::borrow::Cow;
+use crate::token::{self, Kind, Token};
 use std::fmt::{self, Display, Formatter};
 use std::iter::Peekable;
 use std::result;
 
 #[derive(Debug)]
 pub enum ParseError<'a> {
-    Unexpected {
-        tok: Token<'a>,
-        loc: usize,
-    },
+    Unexpected(Token<'a>),
     InvalidToken {
-        expected: Token<'a>,
+        expected: Kind<'a>,
         found: Token<'a>,
-        loc: usize,
     },
     EndOfInput,
 }
@@ -23,55 +18,20 @@ pub enum ParseError<'a> {
 impl<'a> ParseError<'a> {
     pub fn location(&self) -> usize {
         match self {
-            ParseError::Unexpected { loc, .. } => *loc,
-            ParseError::InvalidToken { loc, .. } => *loc,
+            ParseError::Unexpected(t) => t.loc,
+            ParseError::InvalidToken { found, .. } => found.loc,
             ParseError::EndOfInput => usize::max_value(),
         }
-    }
-}
-
-fn to_str(t: &Token) -> &'static str {
-    match t {
-        Token::Literal(_) => "literal",
-        Token::Identifier(_) => "identifier",
-        Token::Let => "'let'",
-        Token::Fn => "'fn'",
-        Token::If => "'if'",
-        Token::Else => "'else'",
-        Token::While => "'while'",
-        Token::And => "'and'",
-        Token::Or => "'or'",
-        Token::Return => "'return'",
-        Token::Comma => "','",
-        Token::Semicolon => "';'",
-        Token::Plus => "'+'",
-        Token::Minus => "'-'",
-        Token::Star => "'*'",
-        Token::Slash => "'/'",
-        Token::Bang => "'!'",
-        Token::Equal => "'='",
-        Token::EqualEqual => "'=='",
-        Token::BangEqual => "'!='",
-        Token::Greater => "'>'",
-        Token::GreaterEqual => "'>='",
-        Token::Less => "'<'",
-        Token::LessEqual => "'<='",
-        Token::LeftParen => "'('",
-        Token::RightParen => "')'",
-        Token::LeftBracket => "'['",
-        Token::RightBracket => "']'",
-        Token::LeftBrace => "'{'",
-        Token::RightBrace => "'}'",
     }
 }
 
 impl<'a> Display for ParseError<'a> {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
-            ParseError::Unexpected { tok, .. } => write!(f, "Unexpected token: {}", to_str(tok)),
+            ParseError::Unexpected(tok) => write!(f, "Unexpected token: {}", tok),
             ParseError::InvalidToken {
                 expected, found, ..
-            } => write!(f, "Expected {}, found {}", to_str(expected), to_str(found)),
+            } => write!(f, "Expected {}, found {}", expected, found),
             ParseError::EndOfInput => write!(f, "Unexpected end of input"),
         }
     }
@@ -79,32 +39,31 @@ impl<'a> Display for ParseError<'a> {
 
 type Result<'a, T> = result::Result<T, ParseError<'a>>;
 
-macro_rules! match_token {
-    ($val:expr, $exp:pat, $expr:expr, $ret:expr) => {
-        match $val {
-            Some((_, $exp)) => $ret,
-            Some((loc, x)) => {
+macro_rules! require {
+    ($slf:expr, $pat:pat, $kind:expr, $ret:expr) => {{
+        match $slf.iter.next() {
+            Some(t @ Token { kind: $pat, .. }) => $ret(t),
+            Some(t) => {
                 return Err(ParseError::InvalidToken {
-                    found: x,
-                    expected: $expr,
-                    loc,
-                })
+                    found: t,
+                    expected: $kind,
+                });
             }
             None => return Err(ParseError::EndOfInput),
         }
-    };
+    }};
 }
 
 pub struct Parser<'a, I>
 where
-    I: Iterator<Item = (usize, Token<'a>)>,
+    I: Iterator<Item = Token<'a>>,
 {
     iter: Peekable<I>,
 }
 
 impl<'a, I> Parser<'a, I>
 where
-    I: Iterator<Item = (usize, Token<'a>)>,
+    I: Iterator<Item = Token<'a>>,
 {
     pub fn new(it: I) -> Self {
         Parser {
@@ -121,60 +80,56 @@ where
     }
 
     pub fn declaration(&mut self) -> Result<'a, Statement<'a>> {
-        match self.iter.peek() {
-            Some((_, Token::Let)) => self.var_declaration(),
-            Some((_, Token::Fn)) => self.fn_declaration(),
+        match self.iter.peek().map(|t| &t.kind) {
+            Some(token::Let) => self.var_declaration(),
+            Some(token::Fn) => self.fn_declaration(),
             _ => self.statement(),
         }
     }
 
     fn var_declaration(&mut self) -> Result<'a, Statement<'a>> {
         self.iter.next(); // Let token
-        match_token!(
-            self.iter.next(),
-            ident@Token::Identifier(_),
-            Token::Identifier(Cow::from("identifier")),
-            {
-                match_token!(self.iter.next(), Token::Equal, Token::Equal, {
-                    Ok(Statement::VarDecl {
-                        ident,
-                        init: self.expression()?,
-                    })
-                })
-            }
+        require!(
+            self,
+            token::Identifier(_),
+            token::Identifier("identifier"),
+            |ident| require!(self, token::Equal, token::Equal, |_| Ok(
+                Statement::VarDecl {
+                    ident,
+                    init: self.expression()?,
+                }
+            ))
         )
     }
 
     fn fn_declaration(&mut self) -> Result<'a, Statement<'a>> {
         self.iter.next(); // Fn token
-        match_token!(
-            self.iter.next(),
-            ident@Token::Identifier(_),
-            Token::Identifier(Cow::from("identifier")),
-            {
-                match_token!(self.iter.next(), Token::LeftParen, Token::LeftParen, {
-                    let params = if let Some((_, Token::RightParen)) = self.iter.peek() {
-                        self.iter.next();
-                        Vec::new()
-                    } else {
-                        self.params()?
-                    };
-                    Ok(Statement::FnDecl {
-                        ident,
-                        params,
-                        body: Box::new(self.block()?),
-                    })
+        require!(
+            self,
+            token::Identifier(_),
+            token::Identifier("identifier"),
+            |ident| require!(self, token::LeftParen, token::LeftParen, |_| {
+                let params = if let Some(token::RightParen) = self.iter.peek().map(|t| &t.kind) {
+                    self.iter.next();
+                    Vec::new()
+                } else {
+                    self.params()?
+                };
+                Ok(Statement::FnDecl {
+                    ident,
+                    params,
+                    body: Box::new(self.block()?),
                 })
-            }
+            })
         )
     }
 
     fn statement(&mut self) -> Result<'a, Statement<'a>> {
-        match self.iter.peek() {
-            Some((_, Token::If)) => self.if_statement(),
-            Some((_, Token::While)) => self.while_statement(),
-            Some((_, Token::Return)) => self.return_statement(),
-            Some((_, Token::LeftBrace)) => self.block(),
+        match self.iter.peek().map(|t| &t.kind) {
+            Some(token::If) => self.if_statement(),
+            Some(token::While) => self.while_statement(),
+            Some(token::Return) => self.return_statement(),
+            Some(token::LeftBrace) => self.block(),
             _ => self.expr_statement(),
         }
     }
@@ -183,7 +138,7 @@ where
         self.iter.next(); // If token
         let cond = self.expression()?;
         let succ = Box::new(self.block()?);
-        let fail = if let Some((_, Token::Else)) = self.iter.peek() {
+        let fail = if let Some(token::Else) = self.iter.peek().map(|t| &t.kind) {
             self.iter.next().unwrap();
             Some(Box::new(self.block()?))
         } else {
@@ -202,7 +157,7 @@ where
     fn return_statement(&mut self) -> Result<'a, Statement<'a>> {
         self.iter.next(); // Return token
         Ok(Statement::Return(
-            if let Some((_, Token::Semicolon)) = self.iter.peek() {
+            if let Some(token::Semicolon) = self.iter.peek().map(|t| &t.kind) {
                 self.iter.next();
                 None
             } else {
@@ -212,12 +167,12 @@ where
     }
 
     fn block(&mut self) -> Result<'a, Statement<'a>> {
-        match_token!(self.iter.next(), Token::LeftBrace, Token::LeftBrace, ());
+        require!(self, token::LeftBrace, token::LeftBrace, |_| ());
         let mut stmts = Vec::new();
         loop {
-            if let Some((_, token)) = self.iter.peek() {
+            if let Some(token) = self.iter.peek().map(|t| &t.kind) {
                 match token {
-                    Token::RightBrace => {
+                    token::RightBrace => {
                         self.iter.next();
                         break;
                     }
@@ -234,32 +189,32 @@ where
 
     fn params(&mut self) -> Result<'a, Vec<Token<'a>>> {
         let mut vec = Vec::new();
-        match_token!(
-            self.iter.next(),
-            ident@Token::Identifier(_),
-            Token::Identifier(Cow::from("identifier")),
-            {
-                vec.push(ident);
-            }
+        require!(
+            self,
+            token::Identifier(_),
+            token::Identifier("identifier"),
+            |t| vec.push(t)
         );
         loop {
             match self.iter.next() {
-                Some((_, Token::RightParen)) => break,
-                Some((_, Token::Comma)) => {
-                    match_token!(
-                        self.iter.next(),
-                        ident@Token::Identifier(_),
-                        Token::Identifier(Cow::from("identifier")),
-                        {
-                            vec.push(ident);
-                        }
+                Some(Token {
+                    kind: token::RightParen,
+                    ..
+                }) => break,
+                Some(Token {
+                    kind: token::Comma, ..
+                }) => {
+                    require!(
+                        self,
+                        token::Identifier(_),
+                        token::Identifier("identifier"),
+                        |t| vec.push(t)
                     );
                 }
-                Some((loc, found)) => {
+                Some(found) => {
                     return Err(ParseError::InvalidToken {
-                        expected: Token::Comma,
+                        expected: token::Comma,
                         found,
-                        loc,
                     })
                 }
                 None => return Err(ParseError::EndOfInput),
@@ -278,9 +233,9 @@ where
 
     fn assignment(&mut self) -> Result<'a, Expression<'a>> {
         let expr = self.or()?;
-        match self.iter.peek() {
-            Some((_, Token::Equal)) => {
-                let (loc, token) = self.iter.next().unwrap();
+        match self.iter.peek().map(|t| &t.kind) {
+            Some(token::Equal) => {
+                let found = self.iter.next().unwrap();
                 let val = self.assignment()?;
                 match expr {
                     Expression::Variable(ident) => Ok(Expression::Assignment {
@@ -288,9 +243,8 @@ where
                         val: Box::new(val),
                     }),
                     _ => Err(ParseError::InvalidToken {
-                        found: token,
-                        expected: Token::Identifier(Cow::from("var")),
-                        loc,
+                        found,
+                        expected: token::Identifier("identifier"),
                     }),
                 }
             }
@@ -300,8 +254,8 @@ where
 
     fn or(&mut self) -> Result<'a, Expression<'a>> {
         let mut expr = self.and()?;
-        while let Some((_, Token::Or)) = self.iter.peek() {
-            let (_, op) = self.iter.next().unwrap();
+        while let Some(token::Or) = self.iter.peek().map(|t| &t.kind) {
+            let op = self.iter.next().unwrap();
             let right = self.and()?;
             expr = Expression::Logical(Box::new(expr), op, Box::new(right));
         }
@@ -310,8 +264,8 @@ where
 
     fn and(&mut self) -> Result<'a, Expression<'a>> {
         let mut expr = self.equality()?;
-        while let Some((_, Token::And)) = self.iter.peek() {
-            let (_, op) = self.iter.next().unwrap();
+        while let Some(token::And) = self.iter.peek().map(|t| &t.kind) {
+            let op = self.iter.next().unwrap();
             let right = self.equality()?;
             expr = Expression::Logical(Box::new(expr), op, Box::new(right));
         }
@@ -320,12 +274,12 @@ where
 
     fn equality(&mut self) -> Result<'a, Expression<'a>> {
         let mut expr = self.comparison()?;
-        while let Some((_, token)) = self.iter.peek() {
+        while let Some(token) = self.iter.peek().map(|t| &t.kind) {
             match token {
-                Token::EqualEqual | Token::BangEqual => {
-                    let (_, token) = self.iter.next().unwrap();
+                token::EqualEqual | token::BangEqual => {
+                    let op = self.iter.next().unwrap();
                     let right = self.comparison()?;
-                    expr = Expression::Binary(Box::new(expr), token, Box::new(right));
+                    expr = Expression::Binary(Box::new(expr), op, Box::new(right));
                 }
                 _ => break,
             }
@@ -335,12 +289,12 @@ where
 
     fn comparison(&mut self) -> Result<'a, Expression<'a>> {
         let mut expr = self.addition()?;
-        while let Some((_, token)) = self.iter.peek() {
+        while let Some(token) = self.iter.peek().map(|t| &t.kind) {
             match token {
-                Token::Less | Token::LessEqual | Token::Greater | Token::GreaterEqual => {
-                    let (_, token) = self.iter.next().unwrap();
+                token::Less | token::LessEqual | token::Greater | token::GreaterEqual => {
+                    let op = self.iter.next().unwrap();
                     let right = self.addition()?;
-                    expr = Expression::Binary(Box::new(expr), token, Box::new(right));
+                    expr = Expression::Binary(Box::new(expr), op, Box::new(right));
                 }
                 _ => break,
             }
@@ -350,12 +304,12 @@ where
 
     fn addition(&mut self) -> Result<'a, Expression<'a>> {
         let mut expr = self.multiplication()?;
-        while let Some((_, token)) = self.iter.peek() {
+        while let Some(token) = self.iter.peek().map(|t| &t.kind) {
             match token {
-                Token::Plus | Token::Minus => {
-                    let (_, token) = self.iter.next().unwrap();
+                token::Plus | token::Minus => {
+                    let op = self.iter.next().unwrap();
                     let right = self.multiplication()?;
-                    expr = Expression::Binary(Box::new(expr), token, Box::new(right));
+                    expr = Expression::Binary(Box::new(expr), op, Box::new(right));
                 }
                 _ => break,
             }
@@ -365,12 +319,12 @@ where
 
     fn multiplication(&mut self) -> Result<'a, Expression<'a>> {
         let mut expr = self.unary()?;
-        while let Some((_, token)) = self.iter.peek() {
+        while let Some(token) = self.iter.peek().map(|t| &t.kind) {
             match token {
-                Token::Star | Token::Slash => {
-                    let (_, token) = self.iter.next().unwrap();
+                token::Star | token::Slash => {
+                    let op = self.iter.next().unwrap();
                     let right = self.multiplication()?;
-                    expr = Expression::Binary(Box::new(expr), token, Box::new(right));
+                    expr = Expression::Binary(Box::new(expr), op, Box::new(right));
                 }
                 _ => break,
             }
@@ -379,10 +333,10 @@ where
     }
 
     fn unary(&mut self) -> Result<'a, Expression<'a>> {
-        match self.iter.peek() {
-            Some((_, Token::Minus)) | Some((_, Token::Bang)) => {
-                let (_, token) = self.iter.next().unwrap();
-                Ok(Expression::Unary(token, Box::new(self.unary()?)))
+        match self.iter.peek().map(|t| &t.kind) {
+            Some(token::Minus) | Some(token::Bang) => {
+                let op = self.iter.next().unwrap();
+                Ok(Expression::Unary(op, Box::new(self.unary()?)))
             }
             _ => self.call(),
         }
@@ -390,9 +344,9 @@ where
 
     fn call(&mut self) -> Result<'a, Expression<'a>> {
         let mut expr = self.primary()?;
-        while let Some((_, Token::LeftParen)) = self.iter.peek() {
+        while let Some(token::LeftParen) = self.iter.peek().map(|t| &t.kind) {
             self.iter.next();
-            let args = if let Some((_, Token::RightParen)) = self.iter.peek() {
+            let args = if let Some(token::RightParen) = self.iter.peek().map(|t| &t.kind) {
                 self.iter.next();
                 Vec::new()
             } else {
@@ -407,16 +361,17 @@ where
     }
 
     fn primary(&mut self) -> Result<'a, Expression<'a>> {
-        match self.iter.next() {
-            Some((_, Token::LeftParen)) => {
+        let token = self.iter.next();
+        match token.as_ref().map(|t| &t.kind) {
+            Some(token::LeftParen) => {
                 let expr = self.expression()?;
-                match_token!(self.iter.next(), Token::RightParen, Token::RightParen, {
-                    Ok(Expression::Grouping(Box::new(expr)))
-                })
+                require!(self, token::RightParen, token::RightParen, |_| Ok(
+                    Expression::Grouping(Box::new(expr))
+                ))
             }
-            Some((_, Token::Literal(val))) => Ok(Expression::Literal(val)),
-            Some((_, ident @ Token::Identifier(_))) => Ok(Expression::Variable(ident)),
-            Some((loc, tok)) => Err(ParseError::Unexpected { tok, loc }),
+            Some(token::Literal(val)) => Ok(Expression::Literal(val.clone())),
+            Some(token::Identifier(_)) => Ok(Expression::Variable(token.unwrap())),
+            Some(_) => Err(ParseError::Unexpected(token.unwrap())),
             None => Err(ParseError::EndOfInput),
         }
     }
@@ -425,13 +380,17 @@ where
         let mut vec = vec![self.expression()?];
         loop {
             match self.iter.next() {
-                Some((_, Token::RightParen)) => break,
-                Some((_, Token::Comma)) => vec.push(self.expression()?),
-                Some((loc, found)) => {
+                Some(Token {
+                    kind: token::RightParen,
+                    ..
+                }) => break,
+                Some(Token {
+                    kind: token::Comma, ..
+                }) => vec.push(self.expression()?),
+                Some(found) => {
                     return Err(ParseError::InvalidToken {
-                        expected: Token::Comma,
+                        expected: token::Comma,
                         found,
-                        loc,
                     })
                 }
                 None => return Err(ParseError::EndOfInput),

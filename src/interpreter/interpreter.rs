@@ -1,7 +1,7 @@
 use super::Scope;
 
 use crate::expr::Expression;
-use crate::scan::Token;
+use crate::token::{self, Token};
 use crate::stmt::Statement;
 use crate::value::{Fn, Value, ValueError};
 use std::cell::RefCell;
@@ -171,19 +171,19 @@ impl<'a> Interpreter<'a> {
             Expression::Grouping(b) => self.evaluate(b, scope),
             Expression::Unary(op, right) => {
                 let val = self.evaluate(right, scope)?;
-                match op {
-                    Token::Minus => (-val).map_err(cvterr),
-                    Token::Bang => (!val).map_err(cvterr),
+                match op.kind {
+                    token::Minus => (-val).map_err(cvterr),
+                    token::Bang => (!val).map_err(cvterr),
                     _ => panic!("Unrecognized unary operator"),
                 }
             }
             Expression::Logical(left, op, right) => {
                 let val = (self.evaluate(left, scope.clone())?).is_truthy()?;
-                match op {
-                    Token::And => Ok(Value::Bool(
+                match op.kind {
+                    token::And => Ok(Value::Bool(
                         val && self.evaluate(right, scope)?.is_truthy()?,
                     )),
-                    Token::Or => Ok(Value::Bool(
+                    token::Or => Ok(Value::Bool(
                         val || self.evaluate(right, scope)?.is_truthy()?,
                     )),
                     _ => panic!("Unrecognized logical operator"),
@@ -192,14 +192,14 @@ impl<'a> Interpreter<'a> {
             Expression::Binary(left, op, right) => {
                 let left = self.evaluate(left, scope.clone())?;
                 let right = self.evaluate(right, scope.clone())?;
-                match op {
-                    Token::Plus => (left + right).map_err(cvterr),
-                    Token::Minus => (left - right).map_err(cvterr),
-                    Token::Star => (left * right).map_err(cvterr),
-                    Token::Slash => (left / right).map_err(cvterr),
-                    Token::EqualEqual => left.equals(right).map_err(cvterr),
-                    Token::BangEqual => left.equals(right).and_then(|c| !c).map_err(cvterr),
-                    Token::Greater => {
+                match op.kind {
+                    token::Plus => (left + right).map_err(cvterr),
+                    token::Minus => (left - right).map_err(cvterr),
+                    token::Star => (left * right).map_err(cvterr),
+                    token::Slash => (left / right).map_err(cvterr),
+                    token::EqualEqual => left.equals(right).map_err(cvterr),
+                    token::BangEqual => left.equals(right).and_then(|c| !c).map_err(cvterr),
+                    token::Greater => {
                         let b = if let Ordering::Greater = left.compare(right)? {
                             true
                         } else {
@@ -207,14 +207,14 @@ impl<'a> Interpreter<'a> {
                         };
                         Ok(Value::Bool(b))
                     }
-                    Token::GreaterEqual => {
+                    token::GreaterEqual => {
                         let b = match left.compare(right)? {
                             Ordering::Greater | Ordering::Equal => true,
                             _ => false,
                         };
                         Ok(Value::Bool(b))
                     }
-                    Token::Less => {
+                    token::Less => {
                         let b = if let Ordering::Less = left.compare(right)? {
                             true
                         } else {
@@ -222,7 +222,7 @@ impl<'a> Interpreter<'a> {
                         };
                         Ok(Value::Bool(b))
                     }
-                    Token::LessEqual => {
+                    token::LessEqual => {
                         let b = match left.compare(right)? {
                             Ordering::Less | Ordering::Equal => true,
                             _ => false,

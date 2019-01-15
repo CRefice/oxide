@@ -1,6 +1,6 @@
 use self::ValueError::*;
 use crate::interpreter::Scope;
-use crate::scan::Token;
+use crate::token::Token;
 use crate::stmt::Statement;
 use std::cell::RefCell;
 use std::cmp::*;
