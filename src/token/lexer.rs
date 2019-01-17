@@ -3,20 +3,28 @@ use crate::value::Value;
 
 #[derive(Clone)]
 pub struct Lexer<'a> {
-        unread: &'a str,
-    loc: usize,
+    unread: &'a str,
+    loc: (usize, usize),
 }
 
 impl<'a> Lexer<'a> {
     pub fn new(line: &'a str) -> Lexer<'a> {
         Lexer {
             unread: line,
-            loc: 1,
+            loc: (1, 1),
         }
     }
 
     fn advance(&mut self, count: usize) {
-        self.loc = self.loc + count;
+        let (ref mut row, ref mut col) = self.loc;
+        for c in self.unread[..count].chars() {
+            if c == '\n' {
+                *row = *row + 1;
+                *col = 1;
+            } else {
+                *col = *col + 1;
+            }
+        }
         self.unread = &self.unread[count..];
     }
 
@@ -28,8 +36,7 @@ impl<'a> Lexer<'a> {
         let mut cs = cs.skip_while(|(_, c)| predicate(c));
         let (i, _) = cs.next().unwrap_or((0, '\0'));
         let s = &self.unread[..i];
-        self.loc = self.loc + i;
-        self.unread = &self.unread[i..];
+        self.advance(i);
         s
     }
 

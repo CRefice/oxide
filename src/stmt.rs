@@ -10,14 +10,16 @@ pub enum Statement<'a> {
     FnDecl {
         ident: Token<'a>,
         params: Vec<Token<'a>>,
-        body: Box<Statement<'a>>
+        body: Box<Statement<'a>>,
     },
     If {
+        loc: (usize, usize),
         cond: expr::Expression<'a>,
         succ: Box<Statement<'a>>,
         fail: Option<Box<Statement<'a>>>,
     },
     While {
+        loc: (usize, usize),
         cond: expr::Expression<'a>,
         stmt: Box<Statement<'a>>,
     },

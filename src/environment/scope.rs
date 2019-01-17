@@ -8,6 +8,8 @@ pub struct Scope<'a> {
     parent: Option<Rc<RefCell<Scope<'a>>>>,
 }
 
+pub type ScopeHandle<'a> = Rc<RefCell<Scope<'a>>>;
+
 impl<'a> Scope<'a> {
     pub fn new() -> Self {
         Scope {
@@ -16,11 +18,15 @@ impl<'a> Scope<'a> {
         }
     }
 
-    pub fn from(s: Rc<RefCell<Scope<'a>>>) -> Self {
+    pub fn from(s: ScopeHandle<'a>) -> Self {
         Scope {
             def: HashMap::new(),
             parent: Some(s),
         }
+    }
+
+    pub fn to_handle(self) -> ScopeHandle<'a> {
+        Rc::new(RefCell::new(self))
     }
 
     pub fn define(&mut self, name: &str, val: Value<'a>) {

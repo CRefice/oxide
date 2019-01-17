@@ -1,5 +1,6 @@
 mod interpreter;
-mod scope;
+mod error;
+mod libs;
 
-pub use self::interpreter::{*};
-pub use self::scope::{*};
+pub use self::interpreter::*;
+pub use self::error::*;

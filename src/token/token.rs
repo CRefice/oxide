@@ -1,4 +1,3 @@
-use self::Kind::*;
 use crate::value::Value;
 use std::fmt::{self, Display};
 
@@ -82,14 +81,14 @@ impl<'a> Display for Kind<'a> {
 #[derive(Debug, Clone)]
 pub struct Token<'a> {
     pub kind: Kind<'a>,
-    pub loc: usize,
+    pub loc: (usize, usize)
 }
 
 impl<'a> Token<'a> {
     pub fn identifier(&self) -> &str {
         match &self.kind {
             Kind::Identifier(name) => name,
-            x => panic!("Tried to get identifier out of {}", x),
+            x => panic!("Tried to get identifier out of {:?}", x),
         }
     }
 }
