@@ -10,6 +10,7 @@ pub fn load_libs<'a>(s: &mut Scope<'a>) {
                 Value::Bool(b) => Value::Num(if b { 1.0 } else { 0.0 }),
                 Value::Str(s) => Value::Num(s.parse().unwrap()),
                 Value::Fn(_) => panic!("Tried to get num out of function"),
+                Value::Array(_) => panic!("Tried to get num out of array"),
             }
         }),
     );

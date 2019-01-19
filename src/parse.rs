@@ -37,7 +37,7 @@ impl<'a> Error<'a> {
     pub fn location(&self) -> Option<(usize, usize)> {
         match self {
             Error::Unexpected(tok) => Some(tok.loc),
-            Error::InvalidToken{found, ..} => Some(found.loc),
+            Error::InvalidToken { found, .. } => Some(found.loc),
             Error::EndOfInput => None,
         }
     }
@@ -410,11 +410,44 @@ where
                     Expression::Grouping(Box::new(expr))
                 ))
             }
+            Some(token::LeftBracket) => {
+                Ok(Expression::Array(
+                    if let Some(token::RightBracket) = self.iter.peek().map(|t| &t.kind) {
+                        self.iter.next();
+                        Vec::new()
+                    } else {
+                        self.array()?
+                    },
+                ))
+            }
             Some(token::Literal(val)) => Ok(Expression::Literal(val.clone())),
             Some(token::Identifier(_)) => Ok(Expression::Variable(token.unwrap())),
             Some(_) => Err(Error::Unexpected(token.unwrap())),
             None => Err(Error::EndOfInput),
         }
+    }
+
+    fn array(&mut self) -> Result<'a, Vec<Expression<'a>>> {
+        let mut vec = vec![self.expression()?];
+        loop {
+            match self.iter.next() {
+                Some(Token {
+                    kind: token::RightBracket,
+                    ..
+                }) => break,
+                Some(Token {
+                    kind: token::Comma, ..
+                }) => vec.push(self.expression()?),
+                Some(found) => {
+                    return Err(Error::InvalidToken {
+                        expected: token::Comma,
+                        found,
+                    })
+                }
+                None => return Err(Error::EndOfInput),
+            }
+        }
+        Ok(vec)
     }
 
     fn args(&mut self) -> Result<'a, Vec<Expression<'a>>> {

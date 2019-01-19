@@ -152,6 +152,13 @@ impl<'a> Environment<'a> {
                     .ok_or(Error::VarNotFound(ident.clone()))
             }
             Expression::Grouping(b) => self.evaluate(b, scope),
+            Expression::Array(arr) => {
+                let mut vec = Vec::new();
+                for expr in arr {
+                    vec.push(self.evaluate(expr, scope.clone())?);
+                }
+                Ok(Value::Array(vec))
+            }
             Expression::Unary { op, operand } => {
                 let val = self.evaluate(operand, scope)?;
                 match op.kind {
@@ -189,16 +196,11 @@ impl<'a> Environment<'a> {
                     token::Minus => (left - right).map_err(|err| Error::Value { err, loc: op.loc }),
                     token::Star => (left * right).map_err(|err| Error::Value { err, loc: op.loc }),
                     token::Slash => (left / right).map_err(|err| Error::Value { err, loc: op.loc }),
-                    token::EqualEqual => left
-                        .equals(right)
-                        .map_err(|err| Error::Value { err, loc: op.loc }),
-                    token::BangEqual => left
-                        .equals(right)
-                        .and_then(|c| !c)
-                        .map_err(|err| Error::Value { err, loc: op.loc }),
+                    token::EqualEqual => Ok(Value::Bool(left == right)),
+                    token::BangEqual => Ok(Value::Bool(left != right)),
                     token::Greater => {
                         let b = if let Ordering::Greater = left
-                            .compare(right)
+                            .compare(&right)
                             .map_err(|err| Error::Value { err, loc: op.loc })?
                         {
                             true
@@ -209,7 +211,7 @@ impl<'a> Environment<'a> {
                     }
                     token::GreaterEqual => {
                         let b = match left
-                            .compare(right)
+                            .compare(&right)
                             .map_err(|err| Error::Value { err, loc: op.loc })?
                         {
                             Ordering::Greater | Ordering::Equal => true,
@@ -219,7 +221,7 @@ impl<'a> Environment<'a> {
                     }
                     token::Less => {
                         let b = if let Ordering::Less = left
-                            .compare(right)
+                            .compare(&right)
                             .map_err(|err| Error::Value { err, loc: op.loc })?
                         {
                             true
@@ -230,7 +232,7 @@ impl<'a> Environment<'a> {
                     }
                     token::LessEqual => {
                         let b = match left
-                            .compare(right)
+                            .compare(&right)
                             .map_err(|err| Error::Value { err, loc: op.loc })?
                         {
                             Ordering::Less | Ordering::Equal => true,
