@@ -133,7 +133,7 @@ impl<'a> PartialEq for Value<'a> {
             (Value::Bool(x), Value::Bool(y)) => x == y,
             (Value::Str(x), Value::Str(y)) => x == y,
             (Value::Array(x), Value::Array(y)) => x == y,
-            (a, b) => false,
+            _ => false,
         }
     }
 }

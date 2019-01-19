@@ -12,9 +12,20 @@ pub enum Expression<'a> {
         args: Vec<Expression<'a>>,
         loc: (usize, usize),
     },
+    Indexing {
+        operand: Box<Expression<'a>>,
+        index: Box<Expression<'a>>,
+        loc: (usize, usize)
+    },
     Assignment {
         ident: Token<'a>,
         val: Box<Expression<'a>>,
+    },
+    IndexingAssignment {
+        ident: Token<'a>,
+        index: Box<Expression<'a>>,
+        val: Box<Expression<'a>>,
+        loc: (usize, usize)
     },
     Unary {
         op: Token<'a>,

@@ -255,6 +255,18 @@ where
                         ident,
                         val: Box::new(val),
                     }),
+                    Expression::Indexing{operand, index, loc } => match *operand {
+                        Expression::Variable(ident) => Ok(Expression::IndexingAssignment {
+                            ident,
+                            index,
+                            val: Box::new(val),
+                            loc
+                        }),
+                        _ => Err(Error::InvalidToken {
+                            found,
+                            expected: token::Identifier("identifier"),
+                        }),
+                    }
                     _ => Err(Error::InvalidToken {
                         found,
                         expected: token::Identifier("identifier"),
@@ -378,8 +390,23 @@ where
                     operand: Box::new(self.unary()?),
                 })
             }
-            _ => self.call(),
+            _ => self.indexing(),
         }
+    }
+
+    fn indexing(&mut self) -> Result<'a, Expression<'a>> {
+        let mut expr = self.call()?;
+        while let Some(token::LeftBracket) = self.iter.peek().map(|t| &t.kind) {
+            let Token { loc, .. } = self.iter.next().unwrap();
+            let index = self.expression()?;
+            require!(self, token::RightBracket, token::RightBracket, |_| ());
+            expr = Expression::Indexing {
+                operand: Box::new(expr),
+                index: Box::new(index),
+                loc,
+            };
+        }
+        Ok(expr)
     }
 
     fn call(&mut self) -> Result<'a, Expression<'a>> {

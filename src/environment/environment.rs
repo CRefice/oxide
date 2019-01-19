@@ -143,13 +143,37 @@ impl<'a> Environment<'a> {
                     loc: *loc,
                 }),
             },
+            Expression::Indexing {
+                operand,
+                index,
+                loc,
+            } => {
+                let operand = self.evaluate(operand, scope.clone())?;
+                let index = self.evaluate(index, scope.clone())?;
+                operand
+                    .index(&index)
+                    .map_err(|err| Error::Value { err, loc: *loc })
+            }
             Expression::Assignment { ident, val } => {
                 let val = self.evaluate(val, scope.clone())?;
                 scope
-                    .clone()
                     .borrow_mut()
                     .assign(ident.identifier(), val)
                     .ok_or(Error::VarNotFound(ident.clone()))
+            }
+            Expression::IndexingAssignment {
+                ident,
+                index,
+                val,
+                loc,
+            } => {
+                let index = self.evaluate(index, scope.clone())?;
+                let val = self.evaluate(val, scope.clone())?;
+                scope
+                    .borrow_mut()
+                    .assign_index(ident.identifier(), index, val)
+                    .ok_or(Error::VarNotFound(ident.clone()))?
+                    .map_err(|err| Error::Value { err, loc: *loc })
             }
             Expression::Grouping(b) => self.evaluate(b, scope),
             Expression::Array(arr) => {
