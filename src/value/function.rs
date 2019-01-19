@@ -1,7 +1,7 @@
 use std::fmt::{self, Debug, Formatter};
 use std::ops;
 
-use super::Value;
+use super::{Result, Value};
 use crate::environment::ScopeHandle;
 use crate::stmt::Statement;
 use crate::token::Token;
@@ -10,7 +10,7 @@ use crate::token::Token;
 pub enum Fn<'a> {
     Native {
         arity: usize,
-        f: &'a dyn ops::Fn(Vec<Value<'a>>) -> Value<'a>,
+        f: &'a dyn ops::Fn(Vec<Value<'a>>) -> Result<'a, Value<'a>>,
     },
     User {
         closure: ScopeHandle<'a>,

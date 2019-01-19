@@ -42,7 +42,7 @@ impl<'a> Display for Value<'a> {
     }
 }
 
-type Result<'a, T> = std::result::Result<T, Error<'a>>;
+pub type Result<'a, T> = std::result::Result<T, Error<'a>>;
 
 impl<'a> Value<'a> {
     pub fn is_truthy(&self) -> Result<'a, bool> {

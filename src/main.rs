@@ -1,11 +1,11 @@
+#[macro_use]
+mod value;
 mod environment;
 mod expr;
+mod interpreter;
 mod parse;
 mod stmt;
 mod token;
-#[macro_use]
-mod value;
-mod interpreter;
 
 use std::env;
 use std::fs;
@@ -19,7 +19,10 @@ fn main() {
         interp.load_libs();
         if let Err(e) = interp.run(&contents) {
             eprintln!("error:");
-            if let Some(line) = e.location().and_then(|(line, _)| contents.lines().nth(line-1)) {
+            if let Some(line) = e
+                .location()
+                .and_then(|(line, _)| contents.lines().nth(line - 1))
+            {
                 eprintln!("{}", line);
             }
             eprintln!("{}", e);

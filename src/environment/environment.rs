@@ -11,7 +11,7 @@ pub struct Environment<'a> {
     ret: Option<Value<'a>>,
 }
 
-type Result<'a, T> = std::result::Result<T, super::Error<'a>>;
+pub type Result<'a, T> = std::result::Result<T, super::Error<'a>>;
 
 impl<'a> Environment<'a> {
     pub fn new() -> Environment<'a> {
@@ -108,7 +108,7 @@ impl<'a> Environment<'a> {
                             for arg in args.into_iter() {
                                 v.push(self.evaluate(arg, scope.clone())?);
                             }
-                            Ok(f(v))
+                            f(v).map_err(|err| Error::Value { err, loc: *loc })
                         }
                     }
                     Fn::User {
@@ -134,11 +134,7 @@ impl<'a> Environment<'a> {
                 },
                 f => Err(Error::Value {
                     err: value::Error::WrongType(
-                        f,
-                        Value::Fn(Fn::Native {
-                            arity: 0,
-                            f: &(|_| Value::Bool(false)),
-                        }),
+                        f, function!(, Ok(Value::Void))
                     ),
                     loc: *loc,
                 }),
