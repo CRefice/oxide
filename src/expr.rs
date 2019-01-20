@@ -2,43 +2,43 @@ use crate::token::Token;
 use crate::value::Value;
 
 #[derive(Clone)]
-pub enum Expression<'a> {
-    Literal(Value<'a>),
-    Variable(Token<'a>),
-    Grouping(Box<Expression<'a>>),
-    Array(Vec<Expression<'a>>),
+pub enum Expression {
+    Literal(Value),
+    Variable(Token),
+    Grouping(Box<Expression>),
+    Array(Vec<Expression>),
     Call {
-        callee: Box<Expression<'a>>,
-        args: Vec<Expression<'a>>,
+        callee: Box<Expression>,
+        args: Vec<Expression>,
         loc: (usize, usize),
     },
     Indexing {
-        operand: Box<Expression<'a>>,
-        index: Box<Expression<'a>>,
+        operand: Box<Expression>,
+        index: Box<Expression>,
         loc: (usize, usize)
     },
     Assignment {
-        ident: Token<'a>,
-        val: Box<Expression<'a>>,
+        ident: Token,
+        val: Box<Expression>,
     },
     IndexingAssignment {
-        ident: Token<'a>,
-        index: Box<Expression<'a>>,
-        val: Box<Expression<'a>>,
+        ident: Token,
+        index: Box<Expression>,
+        val: Box<Expression>,
         loc: (usize, usize)
     },
     Unary {
-        op: Token<'a>,
-        operand: Box<Expression<'a>>,
+        op: Token,
+        operand: Box<Expression>,
     },
     Binary {
-        a: Box<Expression<'a>>,
-        b: Box<Expression<'a>>,
-        op: Token<'a>,
+        a: Box<Expression>,
+        b: Box<Expression>,
+        op: Token,
     },
     Logical {
-        a: Box<Expression<'a>>,
-        b: Box<Expression<'a>>,
-        op: Token<'a>,
+        a: Box<Expression>,
+        b: Box<Expression>,
+        op: Token,
     },
 }

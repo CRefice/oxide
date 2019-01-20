@@ -20,8 +20,10 @@ fn main() {
         if let Err(e) = interp.run(&contents) {
             eprint!("error: ");
             if let Some((line, col)) = e.location() {
-                eprintln!("{}: {}:{}:", file, line, col);
-                eprintln!("\n\t{}\n", contents.lines().nth(line-1).unwrap_or(""));
+                eprintln!("{}: {}:{}:\n", file, line, col);
+                if let Some(line) = contents.lines().nth(line - 1) {
+                    eprintln!("\t{}\n", line);
+                }
             }
             eprintln!("{}", e);
             std::process::exit(1);

@@ -3,13 +3,13 @@ use crate::parse;
 use std::fmt::{self, Display, Formatter};
 
 #[derive(Debug)]
-pub enum Error<'a> {
+pub enum Error {
     IO(std::io::Error),
-    Parse(parse::Error<'a>),
-    Evaluate(environment::Error<'a>),
+    Parse(parse::Error),
+    Evaluate(environment::Error),
 }
 
-impl<'a> Error<'a> {
+impl Error {
     pub fn location(&self) -> Option<(usize, usize)> {
         match self {
             Error::IO(_) => None,
@@ -19,7 +19,7 @@ impl<'a> Error<'a> {
     }
 }
 
-impl<'a> Display for Error<'a> {
+impl Display for Error {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
             Error::IO(err) => err.fmt(f),
@@ -29,20 +29,20 @@ impl<'a> Display for Error<'a> {
     }
 }
 
-impl<'a> From<std::io::Error> for Error<'a> {
+impl From<std::io::Error> for Error {
     fn from(e: std::io::Error) -> Self {
         Error::IO(e)
     }
 }
 
-impl<'a> From<parse::Error<'a>> for Error<'a> {
-    fn from(e: parse::Error<'a>) -> Self {
+impl From<parse::Error> for Error {
+    fn from(e: parse::Error) -> Self {
         Error::Parse(e)
     }
 }
 
-impl<'a> From<environment::Error<'a>> for Error<'a> {
-    fn from(e: environment::Error<'a>) -> Self {
+impl From<environment::Error> for Error {
+    fn from(e: environment::Error) -> Self {
         Error::Evaluate(e)
     }
 }

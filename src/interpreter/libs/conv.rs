@@ -1,7 +1,7 @@
 use crate::environment::Scope;
 use crate::value;
 
-pub fn load_libs<'a>(s: &mut Scope<'a>) {
+pub fn load_libs(s: &mut Scope) {
     s.define(
         "num",
         function!(a, {

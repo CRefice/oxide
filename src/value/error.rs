@@ -2,16 +2,16 @@ use super::Value;
 use std::fmt::{self, Display, Formatter};
 
 #[derive(Debug)]
-pub enum Error<'a> {
-    UnaryOp(Value<'a>, &'static str),
-    BinaryOp(Value<'a>, Value<'a>, &'static str),
-    Comparison(Value<'a>, Value<'a>),
-    Indexing(Value<'a>, Value<'a>),
-    IndexingMut(Value<'a>, Value<'a>),
-    WrongType(Value<'a>, Value<'a>),
+pub enum Error {
+    UnaryOp(Value, &'static str),
+    BinaryOp(Value, Value, &'static str),
+    Comparison(Value, Value),
+    Indexing(Value, Value),
+    IndexingMut(Value, Value),
+    WrongType(Value, Value),
 }
 
-fn kind<'a>(v: &Value<'a>) -> &'static str {
+fn kind(v: &Value) -> &'static str {
     match v {
         Value::Void => "void",
         Value::Num(_) => "num",
@@ -22,7 +22,7 @@ fn kind<'a>(v: &Value<'a>) -> &'static str {
     }
 }
 
-impl<'a> Display for Error<'a> {
+impl Display for Error {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
             Error::UnaryOp(val, op) => write!(

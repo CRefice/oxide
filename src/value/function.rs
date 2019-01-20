@@ -1,5 +1,6 @@
 use std::fmt::{self, Debug, Formatter};
 use std::ops;
+use std::rc::Rc;
 
 use super::{Result, Value};
 use crate::environment::ScopeHandle;
@@ -7,15 +8,15 @@ use crate::stmt::Statement;
 use crate::token::Token;
 
 #[derive(Clone)]
-pub enum Fn<'a> {
+pub enum Fn {
     Native {
         arity: usize,
-        f: &'a dyn ops::Fn(Vec<Value<'a>>) -> Result<'a, Value<'a>>,
+        f: Rc<dyn ops::Fn(Vec<Value>) -> Result<Value>>,
     },
     User {
-        closure: ScopeHandle<'a>,
-        params: Vec<Token<'a>>,
-        body: Box<Statement<'a>>,
+        closure: ScopeHandle,
+        params: Vec<Token>,
+        body: Box<Statement>,
     },
 }
 
@@ -35,20 +36,20 @@ macro_rules! function {
         {
         use crate::value::{Value, Fn};
             Value::Fn(Fn::Native{
-                f: &|vec: Vec<Value>| {
+                f: std::rc::Rc::new(|vec: Vec<Value>| {
                 let mut _i = vec.into_iter();
                 $(
                     let $x = _i.next().unwrap();
                 )*
                 $body
-            },
+            }),
             arity: count_ids!($($x)*)
             })
         }
     };
 }
 
-impl<'a> Debug for Fn<'a> {
+impl Debug for Fn {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
             Fn::Native { .. } => write!(f, "<NativeFn>"),

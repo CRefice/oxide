@@ -3,12 +3,12 @@ use crate::value;
 use std::fmt::{self, Display, Formatter};
 
 #[derive(Debug)]
-pub enum Error<'a> {
+pub enum Error {
     Value {
-        err: value::Error<'a>,
+        err: value::Error,
         loc: (usize, usize),
     },
-    VarNotFound(Token<'a>),
+    VarNotFound(Token),
     WrongArgCount {
         expected: usize,
         found: usize,
@@ -16,7 +16,7 @@ pub enum Error<'a> {
     },
 }
 
-impl<'a> Error<'a> {
+impl Error {
     pub fn location(&self) -> Option<(usize, usize)> {
         match self {
             Error::Value { loc, .. } => Some(*loc),
@@ -26,7 +26,7 @@ impl<'a> Error<'a> {
     }
 }
 
-impl<'a> Display for Error<'a> {
+impl Display for Error {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
             Error::Value { err, .. } => write!(f, "{}", err),

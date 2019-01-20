@@ -6,16 +6,16 @@ use std::iter::Peekable;
 use std::result;
 
 #[derive(Debug)]
-pub enum Error<'a> {
-    Unexpected(Token<'a>),
+pub enum Error {
+    Unexpected(Token),
     InvalidToken {
-        expected: Kind<'a>,
-        found: Token<'a>,
+        expected: Kind,
+        found: Token,
     },
     EndOfInput,
 }
 
-impl<'a> Display for Error<'a> {
+impl Display for Error {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
             Error::Unexpected(tok) => {
@@ -31,7 +31,7 @@ impl<'a> Display for Error<'a> {
     }
 }
 
-impl<'a> Error<'a> {
+impl Error {
     pub fn location(&self) -> Option<(usize, usize)> {
         match self {
             Error::Unexpected(tok) => Some(tok.loc),
@@ -41,7 +41,7 @@ impl<'a> Error<'a> {
     }
 }
 
-type Result<'a, T> = result::Result<T, Error<'a>>;
+type Result<T> = result::Result<T, Error>;
 
 macro_rules! require {
     ($slf:expr, $pat:pat, $kind:expr, $ret:expr) => {{
@@ -58,16 +58,16 @@ macro_rules! require {
     }};
 }
 
-pub struct Parser<'a, I>
+pub struct Parser<I>
 where
-    I: Iterator<Item = Token<'a>>,
+    I: Iterator<Item = Token>,
 {
     iter: Peekable<I>,
 }
 
-impl<'a, I> Parser<'a, I>
+impl<I> Parser<I>
 where
-    I: Iterator<Item = Token<'a>>,
+    I: Iterator<Item = Token>,
 {
     pub fn new(it: I) -> Self {
         Parser {
@@ -75,7 +75,7 @@ where
         }
     }
 
-    pub fn program(&mut self) -> Result<'a, Vec<Statement<'a>>> {
+    pub fn program(&mut self) -> Result<Vec<Statement>> {
         let mut vec = Vec::new();
         while let Some(_) = self.iter.peek() {
             vec.push(self.declaration()?);
@@ -83,7 +83,7 @@ where
         Ok(vec)
     }
 
-    pub fn declaration(&mut self) -> Result<'a, Statement<'a>> {
+    pub fn declaration(&mut self) -> Result<Statement> {
         match self.iter.peek().map(|t| &t.kind) {
             Some(token::Let) => self.var_declaration(),
             Some(token::Fn) => self.fn_declaration(),
@@ -91,12 +91,12 @@ where
         }
     }
 
-    fn var_declaration(&mut self) -> Result<'a, Statement<'a>> {
+    fn var_declaration(&mut self) -> Result<Statement> {
         self.iter.next(); // Let token
         require!(
             self,
             token::Identifier(_),
-            token::Identifier("identifier"),
+            token::Identifier(String::from("identifier")),
             |ident| require!(self, token::Equal, token::Equal, |_| Ok(
                 Statement::VarDecl {
                     ident,
@@ -106,12 +106,12 @@ where
         )
     }
 
-    fn fn_declaration(&mut self) -> Result<'a, Statement<'a>> {
+    fn fn_declaration(&mut self) -> Result<Statement> {
         self.iter.next(); // Fn token
         require!(
             self,
             token::Identifier(_),
-            token::Identifier("identifier"),
+            token::Identifier(String::from("identifier")),
             |ident| require!(self, token::LeftParen, token::LeftParen, |_| {
                 let params = if let Some(token::RightParen) = self.iter.peek().map(|t| &t.kind) {
                     self.iter.next();
@@ -128,7 +128,7 @@ where
         )
     }
 
-    fn statement(&mut self) -> Result<'a, Statement<'a>> {
+    fn statement(&mut self) -> Result<Statement> {
         match self.iter.peek().map(|t| &t.kind) {
             Some(token::If) => self.if_statement(),
             Some(token::While) => self.while_statement(),
@@ -138,7 +138,7 @@ where
         }
     }
 
-    fn if_statement(&mut self) -> Result<'a, Statement<'a>> {
+    fn if_statement(&mut self) -> Result<Statement> {
         self.iter.next(); // If token
         let loc = self.iter.peek().map(|t| t.loc).unwrap_or((0, 0));
         let cond = self.expression()?;
@@ -157,7 +157,7 @@ where
         })
     }
 
-    fn while_statement(&mut self) -> Result<'a, Statement<'a>> {
+    fn while_statement(&mut self) -> Result<Statement> {
         self.iter.next(); // While token
         let loc = self.iter.peek().map(|t| t.loc).unwrap_or((0, 0));
         let cond = self.expression()?;
@@ -165,7 +165,7 @@ where
         Ok(Statement::While { cond, stmt, loc })
     }
 
-    fn return_statement(&mut self) -> Result<'a, Statement<'a>> {
+    fn return_statement(&mut self) -> Result<Statement> {
         self.iter.next(); // Return token
         Ok(Statement::Return(
             if let Some(token::Semicolon) = self.iter.peek().map(|t| &t.kind) {
@@ -177,7 +177,7 @@ where
         ))
     }
 
-    fn block(&mut self) -> Result<'a, Statement<'a>> {
+    fn block(&mut self) -> Result<Statement> {
         require!(self, token::LeftBrace, token::LeftBrace, |_| ());
         let mut stmts = Vec::new();
         loop {
@@ -198,12 +198,12 @@ where
         Ok(Statement::Block(stmts))
     }
 
-    fn params(&mut self) -> Result<'a, Vec<Token<'a>>> {
+    fn params(&mut self) -> Result<Vec<Token>> {
         let mut vec = Vec::new();
         require!(
             self,
             token::Identifier(_),
-            token::Identifier("identifier"),
+            token::Identifier(String::from("identifier")),
             |t| vec.push(t)
         );
         loop {
@@ -218,7 +218,7 @@ where
                     require!(
                         self,
                         token::Identifier(_),
-                        token::Identifier("identifier"),
+                        token::Identifier(String::from("identifier")),
                         |t| vec.push(t)
                     );
                 }
@@ -234,15 +234,15 @@ where
         Ok(vec)
     }
 
-    fn expr_statement(&mut self) -> Result<'a, Statement<'a>> {
+    fn expr_statement(&mut self) -> Result<Statement> {
         Ok(Statement::Expression(self.expression()?))
     }
 
-    pub fn expression(&mut self) -> Result<'a, Expression<'a>> {
+    pub fn expression(&mut self) -> Result<Expression> {
         self.assignment()
     }
 
-    fn assignment(&mut self) -> Result<'a, Expression<'a>> {
+    fn assignment(&mut self) -> Result<Expression> {
         let expr = self.or()?;
         match self.iter.peek().map(|t| &t.kind) {
             Some(token::Equal) => {
@@ -262,12 +262,12 @@ where
                         }),
                         _ => Err(Error::InvalidToken {
                             found,
-                            expected: token::Identifier("identifier"),
+                            expected: token::Identifier(String::from("identifier")),
                         }),
                     }
                     _ => Err(Error::InvalidToken {
                         found,
-                        expected: token::Identifier("identifier"),
+                        expected: token::Identifier(String::from("identifier")),
                     }),
                 }
             }
@@ -275,7 +275,7 @@ where
         }
     }
 
-    fn or(&mut self) -> Result<'a, Expression<'a>> {
+    fn or(&mut self) -> Result<Expression> {
         let mut expr = self.and()?;
         while let Some(token::Or) = self.iter.peek().map(|t| &t.kind) {
             let op = self.iter.next().unwrap();
@@ -289,7 +289,7 @@ where
         Ok(expr)
     }
 
-    fn and(&mut self) -> Result<'a, Expression<'a>> {
+    fn and(&mut self) -> Result<Expression> {
         let mut expr = self.equality()?;
         while let Some(token::And) = self.iter.peek().map(|t| &t.kind) {
             let op = self.iter.next().unwrap();
@@ -303,7 +303,7 @@ where
         Ok(expr)
     }
 
-    fn equality(&mut self) -> Result<'a, Expression<'a>> {
+    fn equality(&mut self) -> Result<Expression> {
         let mut expr = self.comparison()?;
         while let Some(token) = self.iter.peek().map(|t| &t.kind) {
             match token {
@@ -322,7 +322,7 @@ where
         Ok(expr)
     }
 
-    fn comparison(&mut self) -> Result<'a, Expression<'a>> {
+    fn comparison(&mut self) -> Result<Expression> {
         let mut expr = self.addition()?;
         while let Some(token) = self.iter.peek().map(|t| &t.kind) {
             match token {
@@ -341,7 +341,7 @@ where
         Ok(expr)
     }
 
-    fn addition(&mut self) -> Result<'a, Expression<'a>> {
+    fn addition(&mut self) -> Result<Expression> {
         let mut expr = self.multiplication()?;
         while let Some(token) = self.iter.peek().map(|t| &t.kind) {
             match token {
@@ -360,7 +360,7 @@ where
         Ok(expr)
     }
 
-    fn multiplication(&mut self) -> Result<'a, Expression<'a>> {
+    fn multiplication(&mut self) -> Result<Expression> {
         let mut expr = self.unary()?;
         while let Some(token) = self.iter.peek().map(|t| &t.kind) {
             match token {
@@ -379,7 +379,7 @@ where
         Ok(expr)
     }
 
-    fn unary(&mut self) -> Result<'a, Expression<'a>> {
+    fn unary(&mut self) -> Result<Expression> {
         match self.iter.peek().map(|t| &t.kind) {
             Some(token::Minus) | Some(token::Bang) => {
                 let op = self.iter.next().unwrap();
@@ -392,7 +392,7 @@ where
         }
     }
 
-    fn indexing(&mut self) -> Result<'a, Expression<'a>> {
+    fn indexing(&mut self) -> Result<Expression> {
         let mut expr = self.call()?;
         while let Some(token::LeftBracket) = self.iter.peek().map(|t| &t.kind) {
             let Token { loc, .. } = self.iter.next().unwrap();
@@ -407,7 +407,7 @@ where
         Ok(expr)
     }
 
-    fn call(&mut self) -> Result<'a, Expression<'a>> {
+    fn call(&mut self) -> Result<Expression> {
         let mut expr = self.primary()?;
         while let Some(token::LeftParen) = self.iter.peek().map(|t| &t.kind) {
             let Token { loc, .. } = self.iter.next().unwrap();
@@ -426,7 +426,7 @@ where
         Ok(expr)
     }
 
-    fn primary(&mut self) -> Result<'a, Expression<'a>> {
+    fn primary(&mut self) -> Result<Expression> {
         let token = self.iter.next();
         match token.as_ref().map(|t| &t.kind) {
             Some(token::LeftParen) => {
@@ -452,7 +452,7 @@ where
         }
     }
 
-    fn array(&mut self) -> Result<'a, Vec<Expression<'a>>> {
+    fn array(&mut self) -> Result<Vec<Expression>> {
         let mut vec = vec![self.expression()?];
         loop {
             match self.iter.next() {
@@ -475,7 +475,7 @@ where
         Ok(vec)
     }
 
-    fn args(&mut self) -> Result<'a, Vec<Expression<'a>>> {
+    fn args(&mut self) -> Result<Vec<Expression>> {
         let mut vec = vec![self.expression()?];
         loop {
             match self.iter.next() {

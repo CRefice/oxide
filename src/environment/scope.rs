@@ -4,29 +4,29 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 #[derive(Default)]
-pub struct Scope<'a> {
-    def: HashMap<String, Value<'a>>,
-    parent: Option<ScopeHandle<'a>>,
+pub struct Scope {
+    def: HashMap<String, Value>,
+    parent: Option<ScopeHandle>,
 }
 
-pub type ScopeHandle<'a> = Rc<RefCell<Scope<'a>>>;
+pub type ScopeHandle = Rc<RefCell<Scope>>;
 
-impl<'a> From<Scope<'a>> for ScopeHandle<'a> {
-    fn from(s: Scope<'a>) -> ScopeHandle<'a> {
+impl From<Scope> for ScopeHandle {
+    fn from(s: Scope) -> ScopeHandle {
         Rc::new(RefCell::new(s))
     }
 }
 
-impl<'a> Scope<'a> {
+impl Scope {
     pub fn new() -> Self {
         Default::default()
     }
 
-    pub fn define(&mut self, name: &str, val: Value<'a>) {
+    pub fn define(&mut self, name: &str, val: Value) {
         self.def.insert(name.to_owned(), val);
     }
 
-    pub fn assign(&mut self, name: &str, val: Value<'a>) -> Option<Value<'a>> {
+    pub fn assign(&mut self, name: &str, val: Value) -> Option<Value> {
         if self.def.contains_key(name) {
             self.define(name, val.clone());
             Some(val)
@@ -40,9 +40,9 @@ impl<'a> Scope<'a> {
     pub fn assign_index(
         &mut self,
         name: &str,
-        index: Value<'a>,
-        val: Value<'a>,
-    ) -> Option<Result<Value<'a>, value::Error<'a>>> {
+        index: Value,
+        val: Value,
+    ) -> Option<Result<Value, value::Error>> {
         if let Some(v) = self.def.get_mut(name) {
             Some(v.index_mut(&index).map(|v| {
                 *v = val.clone();
@@ -55,7 +55,7 @@ impl<'a> Scope<'a> {
         }
     }
 
-    pub fn get(&self, name: &str) -> Option<Value<'a>> {
+    pub fn get(&self, name: &str) -> Option<Value> {
         self.def
             .get(name)
             .cloned()
@@ -63,8 +63,8 @@ impl<'a> Scope<'a> {
     }
 }
 
-impl<'a> From<ScopeHandle<'a>> for Scope<'a> {
-    fn from(s: ScopeHandle<'a>) -> Self {
+impl<'a> From<ScopeHandle> for Scope {
+    fn from(s: ScopeHandle) -> Self {
         Scope {
             def: HashMap::new(),
             parent: Some(s),

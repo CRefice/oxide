@@ -2,7 +2,7 @@ use std::io;
 
 use crate::environment::Scope;
 
-pub fn load_libs<'a>(s: &mut Scope<'a>) {
+pub fn load_libs(s: &mut Scope) {
     s.define("read_line", function!(, {
         let mut s = String::new();
         io::stdin().read_line(&mut s).unwrap();

@@ -7,8 +7,8 @@ pub struct Lexer<'a> {
     loc: (usize, usize),
 }
 
-impl<'a> Lexer<'a> {
-    pub fn new(line: &'a str) -> Lexer<'a> {
+impl <'a> Lexer<'a> {
+    pub fn new(line: &'a str) -> Lexer {
         Lexer {
             unread: line,
             loc: (1, 1),
@@ -28,7 +28,7 @@ impl<'a> Lexer<'a> {
         self.unread = &self.unread[count..];
     }
 
-    fn advance_while<F>(&mut self, predicate: F) -> &'a str
+    fn advance_while<F>(&mut self, predicate: F) -> &str
     where
         F: Fn(&char) -> bool,
     {
@@ -54,15 +54,15 @@ impl<'a> Lexer<'a> {
             .unwrap_or(false)
     }
 
-    fn token_from(&self, kind: token::Kind<'a>) -> Token<'a> {
+    fn token_from(&self, kind: token::Kind) -> Token {
         Token { kind, loc: self.loc }
     }
 }
 
 impl<'a> Iterator for Lexer<'a> {
-    type Item = Token<'a>;
+    type Item = Token;
 
-    fn next(&mut self) -> Option<Token<'a>> {
+    fn next(&mut self) -> Option<Token> {
         self.advance_while(|c| c.is_whitespace());
         let c = self.unread.chars().next()?;
         if c.is_numeric() {
@@ -91,7 +91,10 @@ impl<'a> Iterator for Lexer<'a> {
                 "true" => Some(self.token_from(token::Literal(Value::Bool(true)))),
                 "false" => Some(self.token_from(token::Literal(Value::Bool(true)))),
                 "void" => Some(self.token_from(token::Literal(Value::Void))),
-                _ => Some(self.token_from(token::Identifier(s))),
+                _ => {
+                    let s = String::from(s);
+                    Some(self.token_from(token::Identifier(s)))
+                }
             }
         } else {
             self.advance(1);
@@ -99,9 +102,9 @@ impl<'a> Iterator for Lexer<'a> {
                 ',' => Some(self.token_from(token::Comma)),
                 ';' => Some(self.token_from(token::Semicolon)),
                 '"' => {
-                    let s = self.advance_while(|c| *c != '"');
+                    let s = self.advance_while(|c| *c != '"').to_owned();
                     self.advance(1); // Skip trailing quotes
-                    Some(self.token_from(token::Literal(Value::Str(s.to_string()))))
+                    Some(self.token_from(token::Literal(Value::Str(s))))
                 }
                 '+' => Some(self.token_from(token::Plus)),
                 '-' => Some(self.token_from(token::Minus)),

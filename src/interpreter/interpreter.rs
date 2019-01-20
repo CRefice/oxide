@@ -2,14 +2,14 @@ use crate::environment::{Environment, Scope, ScopeHandle};
 use crate::parse::Parser;
 use crate::token::Lexer;
 
-pub struct Interpreter<'a> {
-    env: Environment<'a>,
-    globals: ScopeHandle<'a>,
+pub struct Interpreter {
+    env: Environment,
+    globals: ScopeHandle,
 }
 
-type Result<'a, T> = std::result::Result<T, super::Error<'a>>;
+type Result<T> = std::result::Result<T, super::Error>;
 
-impl<'a> Interpreter<'a> {
+impl Interpreter {
     pub fn new() -> Self {
         Interpreter {
             env: Environment::new(),
@@ -17,7 +17,7 @@ impl<'a> Interpreter<'a> {
         }
     }
 
-    pub fn run(&mut self, contents: &'a str) -> Result<'a, ()> {
+    pub fn run(&mut self, contents: &str) -> Result<()> {
         let mut parser = Parser::new(Lexer::new(contents));
         let scope = ScopeHandle::from(Scope::from(self.globals.clone()));
         let stmts = parser.program()?;

@@ -2,9 +2,9 @@ use crate::value::Value;
 use std::fmt::{self, Display};
 
 #[derive(Debug, Clone)]
-pub enum Kind<'a> {
-    Literal(Value<'a>),
-    Identifier(&'a str),
+pub enum Kind {
+    Literal(Value),
+    Identifier(String),
     Let,
     Fn,
     If,
@@ -37,7 +37,7 @@ pub enum Kind<'a> {
 
 pub use self::Kind::*;
 
-impl<'a> Display for Kind<'a> {
+impl Display for Kind {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
@@ -79,12 +79,12 @@ impl<'a> Display for Kind<'a> {
 }
 
 #[derive(Debug, Clone)]
-pub struct Token<'a> {
-    pub kind: Kind<'a>,
+pub struct Token {
+    pub kind: Kind,
     pub loc: (usize, usize)
 }
 
-impl<'a> Token<'a> {
+impl Token {
     pub fn identifier(&self) -> &str {
         match &self.kind {
             Kind::Identifier(name) => name,
@@ -93,7 +93,7 @@ impl<'a> Token<'a> {
     }
 }
 
-impl<'a> Display for Token<'a> {
+impl Display for Token {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         self.kind.fmt(f)
     }

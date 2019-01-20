@@ -2,28 +2,28 @@ use crate::expr;
 use crate::token::Token;
 
 #[derive(Clone)]
-pub enum Statement<'a> {
+pub enum Statement {
     VarDecl {
-        ident: Token<'a>,
-        init: expr::Expression<'a>,
+        ident: Token,
+        init: expr::Expression,
     },
     FnDecl {
-        ident: Token<'a>,
-        params: Vec<Token<'a>>,
-        body: Box<Statement<'a>>,
+        ident: Token,
+        params: Vec<Token>,
+        body: Box<Statement>,
     },
     If {
         loc: (usize, usize),
-        cond: expr::Expression<'a>,
-        succ: Box<Statement<'a>>,
-        fail: Option<Box<Statement<'a>>>,
+        cond: expr::Expression,
+        succ: Box<Statement>,
+        fail: Option<Box<Statement>>,
     },
     While {
         loc: (usize, usize),
-        cond: expr::Expression<'a>,
-        stmt: Box<Statement<'a>>,
+        cond: expr::Expression,
+        stmt: Box<Statement>,
     },
-    Return(Option<expr::Expression<'a>>),
-    Expression(expr::Expression<'a>),
-    Block(Vec<Statement<'a>>),
+    Return(Option<expr::Expression>),
+    Expression(expr::Expression),
+    Block(Vec<Statement>),
 }

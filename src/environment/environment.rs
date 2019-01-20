@@ -7,18 +7,18 @@ use crate::token;
 use crate::value::{self, Fn, Value};
 use std::cmp::Ordering;
 
-pub struct Environment<'a> {
-    ret: Option<Value<'a>>,
+pub struct Environment {
+    ret: Option<Value>,
 }
 
-pub type Result<'a, T> = std::result::Result<T, super::Error<'a>>;
+pub type Result<T> = std::result::Result<T, super::Error>;
 
-impl<'a> Environment<'a> {
-    pub fn new() -> Environment<'a> {
+impl Environment {
+    pub fn new() -> Environment {
         Environment { ret: None }
     }
 
-    pub fn statement(&mut self, stmt: &Statement<'a>, scope: ScopeHandle<'a>) -> Result<'a, ()> {
+    pub fn statement(&mut self, stmt: &Statement, scope: ScopeHandle) -> Result<()> {
         if self.ret.is_some() {
             return Ok(());
         };
@@ -92,9 +92,9 @@ impl<'a> Environment<'a> {
 
     pub fn evaluate(
         &mut self,
-        ex: &Expression<'a>,
-        scope: ScopeHandle<'a>,
-    ) -> Result<'a, Value<'a>> {
+        ex: &Expression,
+        scope: ScopeHandle,
+    ) -> Result<Value> {
         match ex {
             Expression::Literal(x) => Ok(x.clone()),
             Expression::Variable(var) => scope
