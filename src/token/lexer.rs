@@ -54,7 +54,16 @@ impl<'a> Lexer<'a> {
             .unwrap_or(false)
     }
 
-    fn scan(&mut self) -> Option<token::Kind<'a>> {
+    fn token_from(&self, kind: token::Kind<'a>) -> Token<'a> {
+        Token { kind, loc: self.loc }
+    }
+}
+
+impl<'a> Iterator for Lexer<'a> {
+    type Item = Token<'a>;
+
+    fn next(&mut self) -> Option<Token<'a>> {
+        self.advance_while(|c| c.is_whitespace());
         let c = self.unread.chars().next()?;
         if c.is_numeric() {
             let cs = self.unread.char_indices();
@@ -67,74 +76,72 @@ impl<'a> Lexer<'a> {
             }
             let s = &self.unread[..i];
             self.advance(i);
-            s.parse::<f64>().ok().map(|x| token::Literal(Value::Num(x)))
+            s.parse::<f64>().ok().map(|x| self.token_from(token::Literal(Value::Num(x))))
         } else if c.is_alphabetic() || c == '_' {
             let s = self.advance_while(|c| c.is_alphanumeric() || *c == '_');
             match s {
-                "let" => Some(token::Let),
-                "fn" => Some(token::Fn),
-                "if" => Some(token::If),
-                "else" => Some(token::Else),
-                "while" => Some(token::While),
-                "and" => Some(token::And),
-                "or" => Some(token::Or),
-                "return" => Some(token::Return),
-                "true" => Some(token::Literal(Value::Bool(true))),
-                "false" => Some(token::Literal(Value::Bool(true))),
-                _ => Some(token::Identifier(s)),
+                "let" => Some(self.token_from(token::Let)),
+                "fn" => Some(self.token_from(token::Fn)),
+                "if" => Some(self.token_from(token::If)),
+                "else" => Some(self.token_from(token::Else)),
+                "while" => Some(self.token_from(token::While)),
+                "and" => Some(self.token_from(token::And)),
+                "or" => Some(self.token_from(token::Or)),
+                "return" => Some(self.token_from(token::Return)),
+                "true" => Some(self.token_from(token::Literal(Value::Bool(true)))),
+                "false" => Some(self.token_from(token::Literal(Value::Bool(true)))),
+                "void" => Some(self.token_from(token::Literal(Value::Void))),
+                _ => Some(self.token_from(token::Identifier(s))),
             }
         } else {
             self.advance(1);
             match c {
-                ',' => Some(token::Comma),
-                ';' => Some(token::Semicolon),
+                ',' => Some(self.token_from(token::Comma)),
+                ';' => Some(self.token_from(token::Semicolon)),
                 '"' => {
                     let s = self.advance_while(|c| *c != '"');
                     self.advance(1); // Skip trailing quotes
-                    Some(token::Literal(Value::Str(s.to_string())))
+                    Some(self.token_from(token::Literal(Value::Str(s.to_string()))))
                 }
-                '+' => Some(token::Plus),
-                '-' => Some(token::Minus),
-                '*' => Some(token::Star),
-                '/' => Some(token::Slash),
+                '+' => Some(self.token_from(token::Plus)),
+                '-' => Some(self.token_from(token::Minus)),
+                '*' => Some(self.token_from(token::Star)),
+                '/' => {
+                    if self.match_char('/') {
+                        self.advance_while(|c| *c != '\n');
+                        self.next()
+                    } else {
+                        Some(self.token_from(token::Slash))
+                    }
+                }
                 '!' => Some(if self.match_char('=') {
-                    token::BangEqual
+                    self.token_from(token::BangEqual)
                 } else {
-                    token::Bang
+                    self.token_from(token::Bang)
                 }),
                 '=' => Some(if self.match_char('=') {
-                    token::EqualEqual
+                    self.token_from(token::EqualEqual)
                 } else {
-                    token::Equal
+                    self.token_from(token::Equal)
                 }),
                 '>' => Some(if self.match_char('=') {
-                    token::GreaterEqual
+                    self.token_from(token::GreaterEqual)
                 } else {
-                    token::Greater
+                    self.token_from(token::Greater)
                 }),
                 '<' => Some(if self.match_char('=') {
-                    token::LessEqual
+                    self.token_from(token::LessEqual)
                 } else {
-                    token::Less
+                    self.token_from(token::Less)
                 }),
-                '(' => Some(token::LeftParen),
-                ')' => Some(token::RightParen),
-                '[' => Some(token::LeftBracket),
-                ']' => Some(token::RightBracket),
-                '{' => Some(token::LeftBrace),
-                '}' => Some(token::RightBrace),
+                '(' => Some(self.token_from(token::LeftParen)),
+                ')' => Some(self.token_from(token::RightParen)),
+                '[' => Some(self.token_from(token::LeftBracket)),
+                ']' => Some(self.token_from(token::RightBracket)),
+                '{' => Some(self.token_from(token::LeftBrace)),
+                '}' => Some(self.token_from(token::RightBrace)),
                 _ => None,
             }
         }
-    }
-}
-
-impl<'a> Iterator for Lexer<'a> {
-    type Item = Token<'a>;
-
-    fn next(&mut self) -> Option<Token<'a>> {
-        self.advance_while(|c| c.is_whitespace());
-        let loc = self.loc;
-        self.scan().map(|kind| Token { kind, loc })
     }
 }
