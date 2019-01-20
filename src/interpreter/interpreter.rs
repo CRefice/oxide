@@ -1,6 +1,9 @@
+use std::io;
+
 use crate::environment::{Environment, Scope, ScopeHandle};
 use crate::parse::Parser;
 use crate::token::Lexer;
+use crate::stmt::Statement;
 
 pub struct Interpreter {
     env: Environment,
@@ -25,6 +28,22 @@ impl Interpreter {
             self.env.statement(s, scope.clone())?;
         }
         Ok(())
+    }
+
+    pub fn repl(&mut self) -> Result<()> {
+        let scope = Scope::from(self.globals.clone()).to_handle();
+        loop {
+            let mut line = String::new();
+            io::stdin().read_line(&mut line).unwrap();
+            let mut parser = Parser::new(Lexer::new(&line));
+            for stmt in parser.program()? {
+                if let Statement::Expression(expr) = stmt {
+                    println!("{}", self.env.evaluate(&expr, scope.clone())?);
+                } else {
+                    self.env.statement(&stmt, scope.clone())?;
+                }
+            }
+        }
     }
 
     pub fn load_libs(&mut self) {
