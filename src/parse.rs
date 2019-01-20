@@ -19,14 +19,12 @@ impl<'a> Display for Error<'a> {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
             Error::Unexpected(tok) => {
-                let (row, col) = tok.loc;
-                write!(f, "{}:{}: Unexpected token: {}", row, col, tok)
+                write!(f, "Unexpected token: {}", tok)
             }
             Error::InvalidToken {
                 expected, found, ..
             } => {
-                let (row, col) = found.loc;
-                write!(f, "{}:{}: Expected {}, found {}", row, col, expected, found)
+                write!(f, "Expected {}, found {}", expected, found)
             }
             Error::EndOfInput => write!(f, "Unexpected end of input"),
         }

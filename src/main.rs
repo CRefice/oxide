@@ -18,12 +18,10 @@ fn main() {
         let mut interp = Interpreter::new();
         interp.load_libs();
         if let Err(e) = interp.run(&contents) {
-            eprintln!("error:");
-            if let Some(line) = e
-                .location()
-                .and_then(|(line, _)| contents.lines().nth(line - 1))
-            {
-                eprintln!("{}", line);
+            eprint!("error: ");
+            if let Some((line, col)) = e.location() {
+                eprintln!("{}: {}:{}:", file, line, col);
+                eprintln!("\n\t{}\n", contents.lines().nth(line-1).unwrap_or(""));
             }
             eprintln!("{}", e);
             std::process::exit(1);

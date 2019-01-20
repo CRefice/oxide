@@ -29,32 +29,15 @@ impl<'a> Error<'a> {
 impl<'a> Display for Error<'a> {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
-            Error::Value { err, loc, .. } => {
-                let (row, col) = loc;
-                write!(f, "{}:{}: {}", row, col, err)
-            }
-            Error::VarNotFound(name) => {
-                let (row, col) = name.loc;
-                write!(
-                    f,
-                    "{}:{}: Variable '{}' not found",
-                    row,
-                    col,
-                    name.identifier()
-                )
-            }
+            Error::Value { err, .. } => write!(f, "{}", err),
+            Error::VarNotFound(name) => write!(f, "Variable '{}' not found", name.identifier()),
             Error::WrongArgCount {
-                expected,
-                found,
-                loc,
-            } => {
-                let (row, col) = loc;
-                write!(
-                    f,
-                    "{}:{}: Wrong number of arguments supplied to function: found {}, expected {}",
-                    row, col, found, expected
-                )
-            }
+                expected, found, ..
+            } => write!(
+                f,
+                "Wrong number of arguments supplied to function: found {}, expected {}",
+                found, expected
+            ),
         }
     }
 }
