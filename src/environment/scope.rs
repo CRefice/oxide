@@ -3,6 +3,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+#[derive(Default)]
 pub struct Scope<'a> {
     def: HashMap<String, Value<'a>>,
     parent: Option<ScopeHandle<'a>>,
@@ -10,23 +11,15 @@ pub struct Scope<'a> {
 
 pub type ScopeHandle<'a> = Rc<RefCell<Scope<'a>>>;
 
+impl<'a> From<Scope<'a>> for ScopeHandle<'a> {
+    fn from(s: Scope<'a>) -> ScopeHandle<'a> {
+        Rc::new(RefCell::new(s))
+    }
+}
+
 impl<'a> Scope<'a> {
     pub fn new() -> Self {
-        Scope {
-            def: HashMap::new(),
-            parent: None,
-        }
-    }
-
-    pub fn from(s: ScopeHandle<'a>) -> Self {
-        Scope {
-            def: HashMap::new(),
-            parent: Some(s),
-        }
-    }
-
-    pub fn to_handle(self) -> ScopeHandle<'a> {
-        Rc::new(RefCell::new(self))
+        Default::default()
     }
 
     pub fn define(&mut self, name: &str, val: Value<'a>) {
@@ -67,5 +60,14 @@ impl<'a> Scope<'a> {
             .get(name)
             .cloned()
             .or_else(|| self.parent.as_ref().and_then(|p| p.borrow().get(name)))
+    }
+}
+
+impl<'a> From<ScopeHandle<'a>> for Scope<'a> {
+    fn from(s: ScopeHandle<'a>) -> Self {
+        Scope {
+            def: HashMap::new(),
+            parent: Some(s),
+        }
     }
 }

@@ -13,7 +13,7 @@ use std::fs;
 use crate::interpreter::Interpreter;
 
 fn main() {
-    if let Some(file) = env::args().skip(1).next() {
+    if let Some(file) = env::args().nth(1) {
         let contents = fs::read_to_string(&file).expect("Unable to open file");
         let mut interp = Interpreter::new();
         interp.load_libs();

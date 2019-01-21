@@ -19,10 +19,10 @@ impl<'a> Lexer<'a> {
         let (ref mut row, ref mut col) = self.loc;
         for c in self.unread[..count].chars() {
             if c == '\n' {
-                *row = *row + 1;
+                *row += 1;
                 *col = 1;
             } else {
-                *col = *col + 1;
+                *col += 1;
             }
         }
         self.unread = &self.unread[count..];

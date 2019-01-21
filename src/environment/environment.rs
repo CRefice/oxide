@@ -23,31 +23,34 @@ impl<'a> Environment<'a> {
             return Ok(());
         };
         match stmt {
-            Statement::VarDecl { ident, init } => Ok({
+            Statement::VarDecl { ident, init } => {
                 let val = self.evaluate(init, scope.clone())?;
                 scope.borrow_mut().define(ident.identifier(), val);
-            }),
+                Ok(())
+            }
             Statement::FnDecl {
                 ident,
                 params,
                 body,
-            } => Ok({
+            } => {
                 let f = Value::Fn(Fn::User {
                     closure: scope.clone(),
                     params: params.clone(),
                     body: body.clone(),
                 });
                 scope.borrow_mut().define(ident.identifier(), f);
-            }),
-            Statement::Expression(expr) => Ok({
+                Ok(())
+            }
+            Statement::Expression(expr) => {
                 self.evaluate(expr, scope)?;
-            }),
+                Ok(())
+            }
             Statement::If {
                 cond,
                 succ,
                 fail,
                 loc,
-            } => Ok({
+            } => {
                 let cond = self
                     .evaluate(cond, scope.clone())?
                     .is_truthy()
@@ -57,8 +60,9 @@ impl<'a> Environment<'a> {
                 } else if let Some(fail) = fail {
                     self.statement(fail, scope)?;
                 }
-            }),
-            Statement::While { cond, stmt, loc } => Ok({
+                Ok(())
+            }
+            Statement::While { cond, stmt, loc } => {
                 while self
                     .evaluate(cond, scope.clone())?
                     .is_truthy()
@@ -66,20 +70,23 @@ impl<'a> Environment<'a> {
                 {
                     self.statement(stmt, scope.clone())?;
                 }
-            }),
-            Statement::Return(expr) => Ok({
+                Ok(())
+            }
+            Statement::Return(expr) => {
                 self.ret = Some(
                     expr.as_ref()
                         .map(|e| self.evaluate(e, scope))
                         .unwrap_or(Ok(Value::Void))?,
                 );
-            }),
-            Statement::Block(stmts) => Ok({
-                let scope = Scope::from(scope.clone()).to_handle();
+                Ok(())
+            }
+            Statement::Block(stmts) => {
+                let scope = ScopeHandle::from(Scope::from(scope.clone()));
                 for s in stmts {
                     self.statement(s, scope.clone())?;
                 }
-            }),
+                Ok(())
+            }
         }
     }
 
@@ -93,7 +100,7 @@ impl<'a> Environment<'a> {
             Expression::Variable(var) => scope
                 .borrow()
                 .get(var.identifier())
-                .ok_or(Error::VarNotFound(var.clone())),
+                .ok_or_else(|| Error::VarNotFound(var.clone())),
             Expression::Call { callee, args, loc } => match self.evaluate(callee, scope.clone())? {
                 Value::Fn(f) => match f {
                     Fn::Native { arity, f } => {
@@ -105,7 +112,7 @@ impl<'a> Environment<'a> {
                             })
                         } else {
                             let mut v = Vec::new();
-                            for arg in args.into_iter() {
+                            for arg in args.iter() {
                                 v.push(self.evaluate(arg, scope.clone())?);
                             }
                             f(v).map_err(|err| Error::Value { err, loc: *loc })
@@ -127,15 +134,13 @@ impl<'a> Environment<'a> {
                         for (param, arg) in params.into_iter().zip(args.iter()) {
                             s.define(param.identifier(), self.evaluate(arg, scope.clone())?);
                         }
-                        self.statement(&body, s.to_handle())?;
+                        self.statement(&body, ScopeHandle::from(s))?;
                         let ret = self.ret.take().as_ref().cloned().unwrap_or(Value::Void);
                         Ok(ret)
                     }
                 },
                 f => Err(Error::Value {
-                    err: value::Error::WrongType(
-                        f, function!(, Ok(Value::Void))
-                    ),
+                    err: value::Error::WrongType(f, function!(, Ok(Value::Void))),
                     loc: *loc,
                 }),
             },
@@ -155,7 +160,7 @@ impl<'a> Environment<'a> {
                 scope
                     .borrow_mut()
                     .assign(ident.identifier(), val)
-                    .ok_or(Error::VarNotFound(ident.clone()))
+                    .ok_or_else(|| Error::VarNotFound(ident.clone()))
             }
             Expression::IndexingAssignment {
                 ident,
@@ -168,7 +173,7 @@ impl<'a> Environment<'a> {
                 scope
                     .borrow_mut()
                     .assign_index(ident.identifier(), index, val)
-                    .ok_or(Error::VarNotFound(ident.clone()))?
+                    .ok_or_else(|| Error::VarNotFound(ident.clone()))?
                     .map_err(|err| Error::Value { err, loc: *loc })
             }
             Expression::Grouping(b) => self.evaluate(b, scope),

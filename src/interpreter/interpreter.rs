@@ -13,13 +13,13 @@ impl<'a> Interpreter<'a> {
     pub fn new() -> Self {
         Interpreter {
             env: Environment::new(),
-            globals: Scope::new().to_handle(),
+            globals: ScopeHandle::from(Scope::new()),
         }
     }
 
     pub fn run(&mut self, contents: &'a str) -> Result<'a, ()> {
         let mut parser = Parser::new(Lexer::new(contents));
-        let scope = Scope::from(self.globals.clone()).to_handle();
+        let scope = ScopeHandle::from(Scope::from(self.globals.clone()));
         let stmts = parser.program()?;
         for s in stmts.iter() {
             self.env.statement(s, scope.clone())?;
