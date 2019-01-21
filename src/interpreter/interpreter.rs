@@ -31,7 +31,7 @@ impl Interpreter {
     }
 
     pub fn repl(&mut self) -> Result<()> {
-        let scope = Scope::from(self.globals.clone()).to_handle();
+        let scope = ScopeHandle::from(Scope::from(self.globals.clone()));
         loop {
             let mut line = String::new();
             io::stdin().read_line(&mut line).unwrap();
