@@ -100,7 +100,6 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         let token = self.it.next().ok_or(Error::A)?;
         match token.ttype {
             LeftParen => {
-                self.it.next();
                 self.expression()?;
                 if let Some(RightParen) = self.peek() {
                     self.it.next();
