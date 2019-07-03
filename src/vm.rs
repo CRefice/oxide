@@ -7,6 +7,7 @@ pub enum Instruction {
     GetLocal(u16),
     SetLocal(u16),
     Pop,
+    PopFrame(usize),
     Add,
     Sub,
     Mul,
@@ -56,6 +57,14 @@ impl VirtualMachine {
                 Ok(())
             }
             Instruction::Pop => self.pop().map(|_| ()),
+            Instruction::PopFrame(n) => {
+                let top = self.pop()?;
+                for _ in 0..*n {
+                    self.pop()?;
+                }
+                self.stack.push(top);
+                Ok(())
+            }
             Instruction::GetLocal(idx) => {
                 let idx = usize::from(*idx);
                 let val = self

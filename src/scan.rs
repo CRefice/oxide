@@ -11,12 +11,17 @@ pub enum TokenType {
     Literal(Value),
     Identifier(String),
     Let,
+    If,
+    Then,
+    Else,
     Minus,
     Plus,
     Slash,
     Star,
     LeftParen,
     RightParen,
+    LeftBracket,
+    RightBracket,
     And,
     Or,
     Equal,
@@ -97,6 +102,9 @@ impl<'a> Scanner<'a> {
 fn keyword(s: &str) -> Option<TokenType> {
     match s {
         "let" => Some(Let),
+        "if" => Some(If),
+        "then" => Some(Then),
+        "else" => Some(Else),
         "and" => Some(And),
         "or" => Some(Or),
         "true" => Some(Literal(Value::Bool(true))),
@@ -127,6 +135,8 @@ impl<'a> Iterator for Scanner<'a> {
                 '/' => Some(Slash),
                 '(' => Some(LeftParen),
                 ')' => Some(RightParen),
+                '{' => Some(LeftBracket),
+                '}' => Some(RightBracket),
                 '=' => {
                     if let Some('=') = self.peek() {
                         self.advance(1);

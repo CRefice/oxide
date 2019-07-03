@@ -24,36 +24,8 @@ struct VarDecl {
     index: u16,
 }
 
-pub struct VariableSet {
-    decls: Vec<VarDecl>,
-    frame: usize,
-}
-
-impl VariableSet {
-    pub fn new() -> Self {
-        VariableSet {
-            decls: Vec::new(),
-            frame: 0,
-        }
-    }
-
-    pub fn declare(&mut self, name: String) -> Result<u16> {
-        let index: u16 = self
-            .decls
-            .len()
-            .try_into()
-            .map_err(|_| Error::VarStackOverflow)?;
-        self.decls.push(VarDecl { name, index });
-        Ok(index)
-    }
-
-    fn find(&self, name: &str) -> Option<&VarDecl> {
-        self.decls.iter().rfind(|decl| decl.name == name)
-    }
-}
-
 pub struct Compiler {
-    vars: VariableSet,
+    vars: Vec<VarDecl>,
     instrs: Vec<Instruction>,
 }
 
@@ -67,7 +39,7 @@ where
 impl Compiler {
     pub fn new() -> Self {
         Compiler {
-            vars: VariableSet::new(),
+            vars: Vec::new(),
             instrs: Vec::new(),
         }
     }
@@ -103,9 +75,20 @@ impl Compiler {
         self.instrs.push(instr);
     }
 
+    fn declare(&mut self, name: String) -> Result<u16> {
+        let index: u16 = self
+            .vars
+            .len()
+            .try_into()
+            .map_err(|_| Error::VarStackOverflow)?;
+        self.vars.push(VarDecl { name, index });
+        Ok(index)
+    }
+
     fn find_var(&self, name: String) -> Result<u16> {
         self.vars
-            .find(&name)
+            .iter()
+            .rfind(|decl| decl.name == name)
             .map(|decl| decl.index)
             .ok_or(Error::Undeclared { name })
     }
@@ -179,6 +162,7 @@ impl Compiler {
         let token = peek(it).ok_or(Error::EndOfInput)?;
         match token {
             LeftParen => self.grouping(it),
+            LeftBracket => self.block(it),
             Identifier(_) => self.variable(it),
             Literal(_) => {
                 let token = it.next().unwrap();
@@ -190,7 +174,12 @@ impl Compiler {
                 }
             }
             _ => {
-                let expected = vec![LeftParen, Identifier(String::new()), Literal(Value::Null)];
+                let expected = vec![
+                    LeftParen,
+                    LeftBracket,
+                    Identifier(String::new()),
+                    Literal(Value::Null),
+                ];
                 let found = it.next().unwrap();
                 Err(Error::Mismatch { expected, found })
             }
@@ -217,6 +206,29 @@ impl Compiler {
         }
     }
 
+    fn block<I>(&mut self, it: &mut Peekable<I>) -> Result<()>
+    where
+        I: Iterator<Item = Token>,
+    {
+        it.next(); // Skip LeftBracket
+        let frame_start = self.vars.len();
+        loop {
+            self.declaration(it)?;
+            if let Some(RightBracket) = peek(it) {
+                it.next();
+                break;
+            } else {
+                self.emit(Instruction::Pop);
+            }
+        }
+        let frame_len = self.vars.len() - frame_start;
+        self.emit(Instruction::PopFrame(frame_len));
+        while self.vars.len() > frame_start {
+            self.vars.pop();
+        }
+        Ok(())
+    }
+
     fn var_decl<I>(&mut self, it: &mut Peekable<I>) -> Result<()>
     where
         I: Iterator<Item = Token>,
@@ -227,7 +239,7 @@ impl Compiler {
             let equal = it.next().ok_or(Error::EndOfInput)?;
             if let Equal = equal.ttype {
                 self.expression(it)?;
-                let idx = self.vars.declare(ident)?;
+                let idx = self.declare(ident)?;
                 self.emit(Instruction::GetLocal(idx));
                 Ok(())
             } else {
