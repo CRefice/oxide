@@ -2,13 +2,10 @@ mod value;
 
 pub use value::Value;
 
-pub struct VirtualMachine {
-    stack: Vec<Value>,
-    ip: usize,
-}
-
 pub enum Instruction {
     Push(Value),
+    GetLocal(u16),
+    SetLocal(u16),
     Pop,
     Add,
     Sub,
@@ -31,6 +28,11 @@ impl From<value::Error> for Error {
 
 type Result<T> = std::result::Result<T, Error>;
 
+pub struct VirtualMachine {
+    stack: Vec<Value>,
+    ip: usize,
+}
+
 impl VirtualMachine {
     pub fn new() -> Self {
         VirtualMachine {
@@ -43,6 +45,10 @@ impl VirtualMachine {
         self.stack.pop().ok_or(Error::EmptyStack)
     }
 
+    pub fn peek(&mut self) -> Result<Value> {
+        self.stack.last().cloned().ok_or(Error::EmptyStack)
+    }
+
     pub fn step(&mut self, code: &[Instruction]) -> Result<()> {
         let result = match &code[self.ip] {
             Instruction::Push(val) => {
@@ -50,6 +56,22 @@ impl VirtualMachine {
                 Ok(())
             }
             Instruction::Pop => self.pop().map(|_| ()),
+            Instruction::GetLocal(idx) => {
+                let idx = usize::from(*idx);
+                let val = self
+                    .stack
+                    .get(idx)
+                    .cloned()
+                    .expect("Tried to get nonexistent variable!");
+                self.stack.push(val);
+                Ok(())
+            }
+            Instruction::SetLocal(idx) => {
+                let val = self.peek()?;
+                let idx = usize::from(*idx);
+                self.stack[idx] = val;
+                Ok(())
+            }
             Instruction::Add => {
                 let b = self.pop()?;
                 let a = self.pop()?;
