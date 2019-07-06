@@ -1,3 +1,5 @@
+use std::num::ParseFloatError;
+
 use crate::vm::Value;
 
 #[derive(Debug, Clone, Copy)]
@@ -33,6 +35,21 @@ pub enum TokenType {
 }
 
 use TokenType::*;
+
+#[derive(Debug, Clone)]
+pub enum Error {
+    UnclosedQuote { pos: usize },
+    ParseNum(ParseFloatError),
+    Unrecognized(char),
+}
+
+impl From<ParseFloatError> for Error {
+    fn from(err: ParseFloatError) -> Self {
+        Error::ParseNum(err)
+    }
+}
+
+pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug)]
 pub struct Token {
@@ -75,7 +92,7 @@ impl<'a> Scanner<'a> {
         self.advance(i)
     }
 
-    fn num_literal(&mut self) -> Option<TokenType> {
+    fn num_literal(&mut self) -> Result<TokenType> {
         let s = self.unread;
         let pos = self.pos;
         self.advance_while(char::is_numeric);
@@ -84,11 +101,11 @@ impl<'a> Scanner<'a> {
             self.advance_while(char::is_numeric);
         }
         let len = self.pos - pos;
-        let num = s[..len].parse::<f64>().ok()?;
-        Some(Literal(Value::Num(num)))
+        let num = s[..len].parse::<f64>()?;
+        Ok(Literal(Value::Num(num)))
     }
 
-    fn str_literal(&mut self) -> Option<TokenType> {
+    fn str_literal(&mut self) -> Result<TokenType> {
         let s = self.unread;
         let pos = self.pos;
         self.advance_while(|c| c != '"');
@@ -96,9 +113,9 @@ impl<'a> Scanner<'a> {
             let len = self.pos - pos;
             let s = &s[..len];
             self.advance(1);
-            Some(Literal(Value::Str(s.to_owned())))
+            Ok(Literal(Value::Str(s.to_owned())))
         } else {
-            None
+            Err(Error::UnclosedQuote { pos })
         }
     }
 }
@@ -121,46 +138,46 @@ fn keyword(s: &str) -> Option<TokenType> {
 }
 
 impl<'a> Iterator for Scanner<'a> {
-    type Item = Token;
+    type Item = Result<Token>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.advance_while(char::is_whitespace);
         let pos = self.pos;
         let c = self.peek()?;
-        let ttype = if c.is_numeric() {
+        let result = if c.is_numeric() {
             self.num_literal()
         } else if c.is_alphabetic() || c == '_' {
             let s = self.advance_while(|c| c.is_alphanumeric() || c == '_');
-            Some(keyword(s).unwrap_or_else(|| Identifier(s.to_owned())))
+            Ok(keyword(s).unwrap_or_else(|| Identifier(s.to_owned())))
         } else {
             self.advance(1);
             match c {
                 '"' => self.str_literal(),
-                '+' => Some(Plus),
-                ',' => Some(Comma),
-                '-' => Some(Minus),
-                '*' => Some(Star),
-                '/' => Some(Slash),
-                '(' => Some(LeftParen),
-                ')' => Some(RightParen),
-                '{' => Some(LeftBracket),
-                '}' => Some(RightBracket),
+                '+' => Ok(Plus),
+                ',' => Ok(Comma),
+                '-' => Ok(Minus),
+                '*' => Ok(Star),
+                '/' => Ok(Slash),
+                '(' => Ok(LeftParen),
+                ')' => Ok(RightParen),
+                '{' => Ok(LeftBracket),
+                '}' => Ok(RightBracket),
                 '=' => match self.peek() {
                     Some('=') => {
                         self.advance(1);
-                        Some(EqualEqual)
+                        Ok(EqualEqual)
                     }
                     Some('>') => {
                         self.advance(1);
-                        Some(Arrow)
+                        Ok(Arrow)
                     }
-                    _ => Some(Equal),
+                    _ => Ok(Equal),
                 },
-                _ => None,
+                c => Err(Error::Unrecognized(c)),
             }
         };
         let len = self.pos - pos;
         let span = Span { pos, len };
-        ttype.map(|ttype| Token { ttype, span })
+        Some(result.map(|ttype| Token { ttype, span }))
     }
 }

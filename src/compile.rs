@@ -2,13 +2,14 @@ use std::convert::TryInto;
 use std::iter::Peekable;
 use std::num::TryFromIntError;
 
-use crate::scan::{Token, TokenType, TokenType::*};
+use crate::scan::{self, Token, TokenType, TokenType::*};
 use crate::vm::{Instruction, Value};
 
 #[derive(Debug)]
 pub enum Error {
     EndOfInput,
-    IntConversion,
+    Scan(scan::Error),
+    Conversion(TryFromIntError),
     Mismatch {
         expected: Vec<TokenType>,
         found: Token,
@@ -16,18 +17,29 @@ pub enum Error {
 }
 
 impl From<TryFromIntError> for Error {
-    fn from(_: TryFromIntError) -> Self {
-        Error::IntConversion
+    fn from(err: TryFromIntError) -> Self {
+        Error::Conversion(err)
+    }
+}
+
+impl From<scan::Error> for Error {
+    fn from(err: scan::Error) -> Self {
+        Error::Scan(err)
     }
 }
 
 fn unexpected<I>(expected: Vec<TokenType>, it: &mut Peekable<I>) -> Error
 where
-    I: Iterator<Item = Token>,
+    I: Iterator<Item = ScanResult>,
 {
-    it.next()
-        .map(|found| Error::Mismatch { expected, found })
-        .unwrap_or_else(|| Error::EndOfInput)
+    match it
+        .next()
+        .map(|res| res.map_err(Error::Scan))
+        .unwrap_or_else(|| Err(Error::EndOfInput))
+    {
+        Ok(found) => Error::Mismatch { expected, found },
+        Err(err) => err,
+    }
 }
 
 type Result<T> = std::result::Result<T, Error>;
@@ -42,11 +54,24 @@ pub struct Compiler {
     instrs: Vec<Instruction>,
 }
 
-fn peek<I>(it: &mut Peekable<I>) -> Option<&TokenType>
+type ScanResult = scan::Result<Token>;
+
+fn peek<I>(it: &mut Peekable<I>) -> Result<Option<&TokenType>>
 where
-    I: Iterator<Item = Token>,
+    I: Iterator<Item = ScanResult>,
 {
-    it.peek().map(|t| &t.ttype)
+    match it.peek() {
+        Some(Ok(t)) => Ok(Some(&t.ttype)),
+        Some(Err(e)) => Err(Error::Scan(e.clone())),
+        None => Ok(None),
+    }
+}
+
+fn advance<I>(it: &mut Peekable<I>) -> Result<Option<Token>>
+where
+    I: Iterator<Item = ScanResult>,
+{
+    it.next().transpose().map_err(Error::Scan)
 }
 
 impl Compiler {
@@ -97,11 +122,11 @@ impl Compiler {
 
     pub fn program<I>(&mut self, it: &mut Peekable<I>) -> Result<()>
     where
-        I: Iterator<Item = Token>,
+        I: Iterator<Item = ScanResult>,
     {
-        while let Some(_) = peek(it) {
+        while let Some(_) = peek(it)? {
             self.declaration(it)?;
-            if peek(it).is_some() {
+            if peek(it)?.is_some() {
                 self.emit(Instruction::Pop);
             }
         }
@@ -110,9 +135,9 @@ impl Compiler {
 
     pub fn declaration<I>(&mut self, it: &mut Peekable<I>) -> Result<()>
     where
-        I: Iterator<Item = Token>,
+        I: Iterator<Item = ScanResult>,
     {
-        match peek(it) {
+        match peek(it)? {
             Some(Let) => self.local(it),
             Some(Global) => self.global(it),
             _ => self.expression(it),
@@ -121,19 +146,19 @@ impl Compiler {
 
     fn expression<I>(&mut self, it: &mut Peekable<I>) -> Result<()>
     where
-        I: Iterator<Item = Token>,
+        I: Iterator<Item = ScanResult>,
     {
         self.addition(it)
     }
 
     fn addition<I>(&mut self, it: &mut Peekable<I>) -> Result<()>
     where
-        I: Iterator<Item = Token>,
+        I: Iterator<Item = ScanResult>,
     {
         self.multiplication(it)?;
-        match peek(it) {
+        match peek(it)? {
             Some(Plus) | Some(Minus) => {
-                let op = it.next().unwrap();
+                let op = advance(it)?.unwrap();
                 self.addition(it)?;
                 match op.ttype {
                     Plus => self.emit(Instruction::Add),
@@ -148,12 +173,12 @@ impl Compiler {
 
     fn multiplication<I>(&mut self, it: &mut Peekable<I>) -> Result<()>
     where
-        I: Iterator<Item = Token>,
+        I: Iterator<Item = ScanResult>,
     {
         self.unary(it)?;
-        match peek(it) {
+        match peek(it)? {
             Some(Star) | Some(Slash) => {
-                let op = it.next().unwrap();
+                let op = advance(it)?.unwrap();
                 self.multiplication(it)?;
                 match op.ttype {
                     Star => self.emit(Instruction::Mul),
@@ -168,11 +193,11 @@ impl Compiler {
 
     fn unary<I>(&mut self, it: &mut Peekable<I>) -> Result<()>
     where
-        I: Iterator<Item = Token>,
+        I: Iterator<Item = ScanResult>,
     {
-        match peek(it) {
+        match peek(it)? {
             Some(Minus) => {
-                it.next();
+                advance(it)?;
                 self.unary(it)?;
                 self.emit(Instruction::Neg);
             }
@@ -183,12 +208,12 @@ impl Compiler {
 
     fn call<I>(&mut self, it: &mut Peekable<I>) -> Result<()>
     where
-        I: Iterator<Item = Token>,
+        I: Iterator<Item = ScanResult>,
     {
         let begin = self.instrs.len();
         self.primary(it)?;
         let end = self.instrs.len();
-        if let Some(LeftParen) = peek(it) {
+        if let Some(LeftParen) = peek(it)? {
             let argc = self.args(it)?;
             // Since we're compiling in one pass, we need to
             // move callable expression to after args
@@ -201,9 +226,9 @@ impl Compiler {
 
     fn primary<I>(&mut self, it: &mut Peekable<I>) -> Result<()>
     where
-        I: Iterator<Item = Token>,
+        I: Iterator<Item = ScanResult>,
     {
-        let token = peek(it).ok_or(Error::EndOfInput)?;
+        let token = peek(it)?.ok_or(Error::EndOfInput)?;
         match token {
             LeftParen => self.grouping(it),
             LeftBracket => self.block(it),
@@ -211,7 +236,7 @@ impl Compiler {
             Function => self.fn_expr(it),
             Identifier(_) => self.variable(it),
             Literal(_) => {
-                let token = it.next().unwrap();
+                let token = advance(it)?.unwrap();
                 if let Literal(x) = token.ttype {
                     self.emit(Instruction::Push(x));
                     Ok(())
@@ -228,7 +253,7 @@ impl Compiler {
                     Identifier(String::new()),
                     Literal(Value::Null),
                 ];
-                let found = it.next().unwrap();
+                let found = advance(it)?.unwrap();
                 Err(Error::Mismatch { expected, found })
             }
         }
@@ -236,17 +261,17 @@ impl Compiler {
 
     fn grouping<I>(&mut self, it: &mut Peekable<I>) -> Result<()>
     where
-        I: Iterator<Item = Token>,
+        I: Iterator<Item = ScanResult>,
     {
-        it.next(); // Skip LeftParen
+        advance(it)?; // Skip LeftParen
         self.expression(it)?;
-        match peek(it) {
+        match peek(it)? {
             Some(RightParen) => {
-                it.next();
+                advance(it)?;
                 Ok(())
             }
             Some(_) => {
-                let found = it.next().unwrap();
+                let found = advance(it)?.unwrap();
                 let expected = vec![RightParen];
                 Err(Error::Mismatch { expected, found })
             }
@@ -256,14 +281,14 @@ impl Compiler {
 
     fn block<I>(&mut self, it: &mut Peekable<I>) -> Result<()>
     where
-        I: Iterator<Item = Token>,
+        I: Iterator<Item = ScanResult>,
     {
-        it.next(); // Skip LeftBracket
+        advance(it)?; // Skip LeftBracket
         let frame_start = self.locals.len();
         loop {
             self.declaration(it)?;
-            if let Some(RightBracket) = peek(it) {
-                it.next();
+            if let Some(RightBracket) = peek(it)? {
+                advance(it)?;
                 break;
             } else {
                 self.emit(Instruction::Pop);
@@ -279,12 +304,12 @@ impl Compiler {
 
     fn local<I>(&mut self, it: &mut Peekable<I>) -> Result<()>
     where
-        I: Iterator<Item = Token>,
+        I: Iterator<Item = ScanResult>,
     {
-        it.next(); // Skip Let
-        let found = it.next().ok_or(Error::EndOfInput)?;
+        advance(it)?; // Skip Let
+        let found = advance(it)?.ok_or(Error::EndOfInput)?;
         if let Identifier(ident) = found.ttype {
-            let found = it.next().ok_or(Error::EndOfInput)?;
+            let found = advance(it)?.ok_or(Error::EndOfInput)?;
             if let Equal = found.ttype {
                 self.expression(it)?;
                 let idx = self.declare_local(ident)?;
@@ -302,12 +327,12 @@ impl Compiler {
 
     fn global<I>(&mut self, it: &mut Peekable<I>) -> Result<()>
     where
-        I: Iterator<Item = Token>,
+        I: Iterator<Item = ScanResult>,
     {
-        it.next(); // Skip Global
-        let found = it.next().ok_or(Error::EndOfInput)?;
+        advance(it)?; // Skip Global
+        let found = advance(it)?.ok_or(Error::EndOfInput)?;
         if let Identifier(ident) = found.ttype {
-            let found = it.next().ok_or(Error::EndOfInput)?;
+            let found = advance(it)?.ok_or(Error::EndOfInput)?;
             if let Equal = found.ttype {
                 self.expression(it)?;
                 self.emit(Instruction::SetGlobal(ident));
@@ -324,13 +349,13 @@ impl Compiler {
 
     fn variable<I>(&mut self, it: &mut Peekable<I>) -> Result<()>
     where
-        I: Iterator<Item = Token>,
+        I: Iterator<Item = ScanResult>,
     {
-        let token = it.next().unwrap();
-        let follow = peek(it);
+        let token = advance(it)?.unwrap();
+        let follow = peek(it)?;
         match (token.ttype, follow) {
             (Identifier(ident), Some(Equal)) => {
-                it.next();
+                advance(it)?;
                 self.expression(it)?;
                 if let Some(idx) = self.find_local(&ident) {
                     self.emit(Instruction::SetLocal(idx));
@@ -353,14 +378,14 @@ impl Compiler {
 
     fn if_expr<I>(&mut self, it: &mut Peekable<I>) -> Result<()>
     where
-        I: Iterator<Item = Token>,
+        I: Iterator<Item = ScanResult>,
     {
-        it.next(); // Skip If
+        advance(it)?; // Skip If
         self.expression(it)?; // Condition
         let jump_idx = self.stub_jump();
-        match peek(it) {
+        match peek(it)? {
             Some(Then) => {
-                it.next();
+                advance(it)?;
                 self.expression(it)?;
             }
             Some(LeftBracket) => {
@@ -368,7 +393,7 @@ impl Compiler {
             }
             Some(_) => {
                 let expected = vec![Then, LeftBracket];
-                let found = it.next().unwrap();
+                let found = advance(it)?.unwrap();
                 return Err(Error::Mismatch { expected, found });
             }
             None => {
@@ -376,8 +401,8 @@ impl Compiler {
             }
         };
         let jump_else_idx = self.stub_jump();
-        if let Some(Else) = peek(it) {
-            it.next();
+        if let Some(Else) = peek(it)? {
+            advance(it)?;
             self.expression(it)?;
         } else {
             self.emit(Instruction::Push(Value::Null));
@@ -389,9 +414,9 @@ impl Compiler {
 
     fn fn_expr<I>(&mut self, it: &mut Peekable<I>) -> Result<()>
     where
-        I: Iterator<Item = Token>,
+        I: Iterator<Item = ScanResult>,
     {
-        it.next(); // Skip Fn
+        advance(it)?; // Skip Fn
 
         let mut fn_locals = Vec::new();
         std::mem::swap(&mut self.locals, &mut fn_locals);
@@ -400,9 +425,9 @@ impl Compiler {
         let code_loc = self.instrs.len();
         let jump_idx = self.stub_jump();
 
-        match peek(it) {
+        match peek(it)? {
             Some(Arrow) => {
-                it.next();
+                advance(it)?;
                 self.expression(it)?;
             }
             Some(LeftBracket) => {
@@ -410,7 +435,7 @@ impl Compiler {
             }
             Some(_) => {
                 let expected = vec![Then, LeftBracket];
-                let found = it.next().unwrap();
+                let found = advance(it)?.unwrap();
                 return Err(Error::Mismatch { expected, found });
             }
             None => {
@@ -429,20 +454,20 @@ impl Compiler {
 
     fn params<I>(&mut self, it: &mut Peekable<I>) -> Result<usize>
     where
-        I: Iterator<Item = Token>,
+        I: Iterator<Item = ScanResult>,
     {
         let typ = |t: Token| t.ttype;
 
         let mut arity = 0;
-        if let Some(LeftParen) = it.next().map(typ) {
-            match it.next().map(typ) {
+        if let Some(LeftParen) = advance(it)?.map(typ) {
+            match advance(it)?.map(typ) {
                 Some(RightParen) => Ok(arity),
                 Some(Identifier(a)) => {
                     self.declare_local(a)?;
                     arity = 1;
-                    while let Some(Comma) = peek(it) {
-                        it.next();
-                        let found = it.next().ok_or(Error::EndOfInput)?;
+                    while let Some(Comma) = peek(it)? {
+                        advance(it)?;
+                        let found = advance(it)?.ok_or(Error::EndOfInput)?;
                         if let Identifier(a) = found.ttype {
                             self.declare_local(a)?;
                             arity += 1;
@@ -451,8 +476,8 @@ impl Compiler {
                             return Err(Error::Mismatch { expected, found });
                         }
                     }
-                    if let Some(RightParen) = peek(it) {
-                        it.next();
+                    if let Some(RightParen) = peek(it)? {
+                        advance(it)?;
                         Ok(arity)
                     } else {
                         Err(unexpected(vec![RightParen, Comma], it))
@@ -467,22 +492,22 @@ impl Compiler {
 
     fn args<I>(&mut self, it: &mut Peekable<I>) -> Result<u16>
     where
-        I: Iterator<Item = Token>,
+        I: Iterator<Item = ScanResult>,
     {
         let mut argc = 0;
-        it.next(); //Skip LeftParen
-        match peek(it) {
+        advance(it)?; //Skip LeftParen
+        match peek(it)? {
             Some(RightParen) => Ok(argc),
             _ => {
                 self.expression(it)?;
                 argc += 1;
-                while let Some(Comma) = peek(it) {
-                    it.next();
+                while let Some(Comma) = peek(it)? {
+                    advance(it)?;
                     self.expression(it)?;
                     argc += 1;
                 }
-                if let Some(RightParen) = peek(it) {
-                    it.next();
+                if let Some(RightParen) = peek(it)? {
+                    advance(it)?;
                     Ok(argc)
                 } else {
                     Err(unexpected(vec![RightParen, Comma], it))
