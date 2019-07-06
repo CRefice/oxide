@@ -1,3 +1,5 @@
+mod libs;
+
 use std::fs::File;
 use std::io::{self, BufRead as _, Read as _};
 
@@ -38,9 +40,9 @@ pub struct Interpreter {
 
 impl Interpreter {
     pub fn new() -> Self {
-        Interpreter {
-            vm: VirtualMachine::new(),
-        }
+        let mut vm = VirtualMachine::new();
+        libs::load_libraries(&mut vm);
+        Interpreter { vm }
     }
 
     pub fn run_file(&mut self, mut file: File) -> Result<()> {

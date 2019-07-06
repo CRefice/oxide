@@ -11,13 +11,16 @@ pub enum TokenType {
     Literal(Value),
     Identifier(String),
     Let,
+    Global,
     If,
     Then,
     Else,
+    Function,
     Minus,
     Plus,
     Slash,
     Star,
+    Arrow,
     LeftParen,
     RightParen,
     LeftBracket,
@@ -26,6 +29,7 @@ pub enum TokenType {
     Or,
     Equal,
     EqualEqual,
+    Comma,
 }
 
 use TokenType::*;
@@ -102,13 +106,16 @@ impl<'a> Scanner<'a> {
 fn keyword(s: &str) -> Option<TokenType> {
     match s {
         "let" => Some(Let),
+        "global" => Some(Global),
         "if" => Some(If),
         "then" => Some(Then),
         "else" => Some(Else),
+        "fn" => Some(Function),
         "and" => Some(And),
         "or" => Some(Or),
         "true" => Some(Literal(Value::Bool(true))),
         "false" => Some(Literal(Value::Bool(false))),
+        "null" => Some(Literal(Value::Null)),
         _ => None,
     }
 }
@@ -130,6 +137,7 @@ impl<'a> Iterator for Scanner<'a> {
             match c {
                 '"' => self.str_literal(),
                 '+' => Some(Plus),
+                ',' => Some(Comma),
                 '-' => Some(Minus),
                 '*' => Some(Star),
                 '/' => Some(Slash),
@@ -137,14 +145,17 @@ impl<'a> Iterator for Scanner<'a> {
                 ')' => Some(RightParen),
                 '{' => Some(LeftBracket),
                 '}' => Some(RightBracket),
-                '=' => {
-                    if let Some('=') = self.peek() {
+                '=' => match self.peek() {
+                    Some('=') => {
                         self.advance(1);
                         Some(EqualEqual)
-                    } else {
-                        Some(Equal)
                     }
-                }
+                    Some('>') => {
+                        self.advance(1);
+                        Some(Arrow)
+                    }
+                    _ => Some(Equal),
+                },
                 _ => None,
             }
         };

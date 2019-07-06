@@ -1,11 +1,21 @@
+use std::fmt::{self, Debug, Display};
 use std::ops::*;
+use std::rc::Rc;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum Value {
     Null,
     Num(f64),
     Str(String),
     Bool(bool),
+    Function {
+        code_loc: usize,
+        arity: usize,
+    },
+    NativeFn {
+        f: Rc<dyn Fn(&[Value]) -> Value>,
+        arity: usize,
+    },
 }
 
 impl Value {
@@ -15,6 +25,33 @@ impl Value {
             Value::Num(x) => *x != 0.0,
             Value::Str(s) => !s.is_empty(),
             Value::Bool(b) => *b,
+            _ => true,
+        }
+    }
+}
+
+impl Display for Value {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Value::Null => write!(f, "null"),
+            Value::Num(x) => write!(f, "{}", x),
+            Value::Str(s) => write!(f, "{}", s),
+            Value::Bool(b) => write!(f, "{}", b),
+            Value::Function { .. } => write!(f, "fn"),
+            Value::NativeFn { .. } => write!(f, "native fn"),
+        }
+    }
+}
+
+impl Debug for Value {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Value::Null => write!(f, "Null"),
+            Value::Num(x) => write!(f, "Num({})", x),
+            Value::Str(s) => write!(f, "Str({})", s),
+            Value::Bool(b) => write!(f, "Bool({})", b),
+            Value::Function { .. } => write!(f, "Function .."),
+            Value::NativeFn { .. } => write!(f, "NativeFn(..)"),
         }
     }
 }
@@ -30,6 +67,7 @@ pub enum Error {
         b: Value,
         op: &'static str,
     },
+    WrongCall(Value),
 }
 
 type Result<T> = std::result::Result<T, Error>;
