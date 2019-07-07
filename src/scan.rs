@@ -1,3 +1,4 @@
+use std::fmt::{self, Display};
 use std::num::ParseFloatError;
 
 use crate::vm::Value;
@@ -36,16 +37,62 @@ pub enum TokenType {
 
 use TokenType::*;
 
-#[derive(Debug, Clone)]
-pub enum Error {
-    UnclosedQuote { pos: usize },
-    ParseNum(ParseFloatError),
-    Unrecognized(char),
+impl Display for TokenType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Literal(_) => "literal",
+                Identifier(_) => "identifier",
+                Let => "let",
+                Global => "global",
+                If => "if",
+                Then => "then",
+                Else => "else",
+                Function => "fn",
+                Minus => "-",
+                Plus => "+",
+                Slash => "/",
+                Star => "*",
+                Arrow => "=>",
+                LeftParen => "(",
+                RightParen => ")",
+                LeftBracket => "{",
+                RightBracket => "}",
+                And => "and",
+                Or => "or",
+                Equal => "=",
+                EqualEqual => "==",
+                Comma => ",",
+            }
+        )
+    }
 }
 
-impl From<ParseFloatError> for Error {
-    fn from(err: ParseFloatError) -> Self {
-        Error::ParseNum(err)
+#[derive(Debug, Clone)]
+pub enum Error {
+    UnclosedQuote { span: Span },
+    ParseNum { cause: ParseFloatError, span: Span },
+    Unrecognized { c: char, span: Span },
+}
+
+impl Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Error::UnclosedQuote { .. } => write!(f, "Unmatched opening quote"),
+            Error::ParseNum { cause, .. } => write!(f, "Unable to parse number: {}", cause),
+            Error::Unrecognized { c, .. } => write!(f, "Invalid token '{}'", c),
+        }
+    }
+}
+
+impl std::error::Error for Error {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Error::ParseNum { cause, .. } => Some(cause),
+            _ => None,
+        }
     }
 }
 
@@ -101,7 +148,10 @@ impl<'a> Scanner<'a> {
             self.advance_while(char::is_numeric);
         }
         let len = self.pos - pos;
-        let num = s[..len].parse::<f64>()?;
+        let span = Span { pos, len };
+        let num = s[..len]
+            .parse::<f64>()
+            .map_err(|cause| Error::ParseNum { cause, span })?;
         Ok(Literal(Value::Num(num)))
     }
 
@@ -109,13 +159,14 @@ impl<'a> Scanner<'a> {
         let s = self.unread;
         let pos = self.pos;
         self.advance_while(|c| c != '"');
+        let len = self.pos - pos;
         if let Some('"') = self.peek() {
-            let len = self.pos - pos;
             let s = &s[..len];
             self.advance(1);
             Ok(Literal(Value::Str(s.to_owned())))
         } else {
-            Err(Error::UnclosedQuote { pos })
+            let span = Span { pos, len };
+            Err(Error::UnclosedQuote { span })
         }
     }
 }
@@ -173,7 +224,11 @@ impl<'a> Iterator for Scanner<'a> {
                     }
                     _ => Ok(Equal),
                 },
-                c => Err(Error::Unrecognized(c)),
+                c => {
+                    let len = self.pos - pos;
+                    let span = Span { pos, len };
+                    Err(Error::Unrecognized { c, span })
+                }
             }
         };
         let len = self.pos - pos;

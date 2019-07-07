@@ -2,6 +2,7 @@ mod value;
 
 use std::collections::HashMap;
 use std::convert::TryInto as _;
+use std::fmt::{self, Display};
 use std::num::TryFromIntError;
 
 pub use value::Value;
@@ -44,6 +45,32 @@ impl From<value::Error> for Error {
 impl From<TryFromIntError> for Error {
     fn from(err: TryFromIntError) -> Self {
         Error::Conversion(err)
+    }
+}
+
+impl Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Error::Value(err) => write!(f, "{}", err),
+            Error::Conversion(err) => write!(f, "Number too big to fit into VM code: {}", err),
+            Error::UndeclaredGlobal(name) => write!(f, "Nonexistent variable '{}'", name),
+            Error::WrongArgCount { expected, found } => write!(
+                f,
+                "Wrong argument count to function call: expected {}, found {}",
+                expected, found
+            ),
+            Error::EmptyStack => write!(f, "Cannot return value out of an empty stack"),
+        }
+    }
+}
+
+impl std::error::Error for Error {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Error::Value(err) => Some(err),
+            Error::Conversion(err) => Some(err),
+            _ => None,
+        }
     }
 }
 
@@ -97,7 +124,9 @@ impl VirtualMachine {
     }
 
     pub fn step(&mut self, code: &[Instruction]) -> Result<()> {
-        let result = match &code[self.ip] {
+        let opcode = &code[self.ip];
+        self.ip += 1;
+        match opcode {
             Instruction::Push(val) => {
                 self.stack.push(val.clone());
                 Ok(())
@@ -150,10 +179,17 @@ impl VirtualMachine {
                 Ok(())
             }
             Instruction::Call(argc) => {
+                let arg_len = usize::from(*argc);
+                // TODO: Remove this once/if you implement an AST.
+                let args = self
+                    .stack
+                    .drain(self.stack.len() - arg_len..)
+                    .collect::<Vec<_>>();
                 let callable = self.pop()?;
+                self.stack.extend(args);
                 match callable {
                     Value::Function { code_loc, arity } => {
-                        if usize::from(*argc) == arity {
+                        if arg_len == arity {
                             let frame = Frame {
                                 call_site: self.ip,
                                 stack_depth: self.stack.len() - arity,
@@ -217,14 +253,15 @@ impl VirtualMachine {
                 self.stack.push(result);
                 Ok(())
             }
-        };
-        self.ip += 1;
-        result
+        }
     }
 
     pub fn run(&mut self, code: &[Instruction]) -> Result<()> {
         while self.ip < code.len() {
-            self.step(code)?;
+            if let e @ Err(_) = self.step(code) {
+                self.ip = code.len();
+                return e;
+            }
         }
         Ok(())
     }

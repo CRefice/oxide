@@ -28,6 +28,17 @@ impl Value {
             _ => true,
         }
     }
+
+    pub fn type_name(&self) -> &'static str {
+        match self {
+            Value::Null => "Null",
+            Value::Num(_) => "Num",
+            Value::Str(_) => "Str",
+            Value::Bool(_) => "Bool",
+            Value::Function { .. } => "Fn",
+            Value::NativeFn { .. } => "NativeFn",
+        }
+    }
 }
 
 impl Display for Value {
@@ -50,7 +61,11 @@ impl Debug for Value {
             Value::Num(x) => write!(f, "Num({})", x),
             Value::Str(s) => write!(f, "Str({})", s),
             Value::Bool(b) => write!(f, "Bool({})", b),
-            Value::Function { .. } => write!(f, "Function .."),
+            Value::Function { code_loc, arity } => write!(
+                f,
+                "Function {{ code_loc = {}, arity = {}, }}",
+                code_loc, arity
+            ),
             Value::NativeFn { .. } => write!(f, "NativeFn(..)"),
         }
     }
@@ -68,6 +83,37 @@ pub enum Error {
         op: &'static str,
     },
     WrongCall(Value),
+}
+
+impl Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Error::Unary { x, op } => write!(
+                f,
+                "Cannot apply operator '{}' to value of type '{}'",
+                op,
+                x.type_name()
+            ),
+            Error::Binary { a, b, op } => write!(
+                f,
+                "Cannot apply operator '{}' to values of type '{}' and '{}'",
+                op,
+                a.type_name(),
+                b.type_name()
+            ),
+            Error::WrongCall(val) => write!(
+                f,
+                "Cannot call value of type {} like a function",
+                val.type_name()
+            ),
+        }
+    }
+}
+
+impl std::error::Error for Error {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        None
+    }
 }
 
 type Result<T> = std::result::Result<T, Error>;

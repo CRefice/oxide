@@ -1,4 +1,5 @@
 use std::convert::TryInto;
+use std::fmt::{self, Display};
 use std::iter::Peekable;
 use std::num::TryFromIntError;
 
@@ -25,6 +26,46 @@ impl From<TryFromIntError> for Error {
 impl From<scan::Error> for Error {
     fn from(err: scan::Error) -> Self {
         Error::Scan(err)
+    }
+}
+
+fn human_readable_fmt<T: Display>(slice: &[T], f: &mut fmt::Formatter) -> fmt::Result {
+    match slice.len() {
+        0 => write!(f, "nothing"),
+        1 => write!(f, "'{}'", slice[0].to_string()),
+        x => {
+            let mut it = slice[..x - 1].iter();
+            write!(f, "one of '{}'", it.next().unwrap())?;
+            for val in it {
+                write!(f, ", '{}'", val)?;
+            }
+            write!(f, " or '{}'", slice.last().unwrap())
+        }
+    }
+}
+
+impl Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Error::EndOfInput => write!(f, "Unexpected end of file"),
+            Error::Scan(err) => write!(f, "{}", err),
+            Error::Conversion(err) => write!(f, "Number too big to fit into VM code: {}", err),
+            Error::Mismatch { expected, found } => {
+                write!(f, "Mismatched token: expected ")?;
+                human_readable_fmt(&expected, f)?;
+                write!(f, ", found '{}'", found.ttype)
+            }
+        }
+    }
+}
+
+impl std::error::Error for Error {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Error::Scan(err) => Some(err),
+            Error::Conversion(err) => Some(err),
+            _ => None,
+        }
     }
 }
 
@@ -210,15 +251,9 @@ impl Compiler {
     where
         I: Iterator<Item = ScanResult>,
     {
-        let begin = self.instrs.len();
         self.primary(it)?;
-        let end = self.instrs.len();
         if let Some(LeftParen) = peek(it)? {
             let argc = self.args(it)?;
-            // Since we're compiling in one pass, we need to
-            // move callable expression to after args
-            let mut expr = self.instrs.drain(begin..end).collect();
-            self.instrs.append(&mut expr);
             self.emit(Instruction::Call(argc));
         }
         Ok(())
@@ -422,8 +457,8 @@ impl Compiler {
         std::mem::swap(&mut self.locals, &mut fn_locals);
 
         let arity = self.params(it)?;
-        let code_loc = self.instrs.len();
         let jump_idx = self.stub_jump();
+        let code_loc = self.instrs.len();
 
         match peek(it)? {
             Some(Arrow) => {
@@ -434,7 +469,7 @@ impl Compiler {
                 self.block(it)?;
             }
             Some(_) => {
-                let expected = vec![Then, LeftBracket];
+                let expected = vec![Arrow, LeftBracket];
                 let found = advance(it)?.unwrap();
                 return Err(Error::Mismatch { expected, found });
             }
