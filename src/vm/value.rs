@@ -71,53 +71,6 @@ impl Debug for Value {
     }
 }
 
-#[derive(Debug)]
-pub enum Error {
-    Unary {
-        x: Value,
-        op: &'static str,
-    },
-    Binary {
-        a: Value,
-        b: Value,
-        op: &'static str,
-    },
-    WrongCall(Value),
-}
-
-impl Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Error::Unary { x, op } => write!(
-                f,
-                "Cannot apply operator '{}' to value of type '{}'",
-                op,
-                x.type_name()
-            ),
-            Error::Binary { a, b, op } => write!(
-                f,
-                "Cannot apply operator '{}' to values of type '{}' and '{}'",
-                op,
-                a.type_name(),
-                b.type_name()
-            ),
-            Error::WrongCall(val) => write!(
-                f,
-                "Cannot call value of type {} like a function",
-                val.type_name()
-            ),
-        }
-    }
-}
-
-impl std::error::Error for Error {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        None
-    }
-}
-
-type Result<T> = std::result::Result<T, Error>;
-
 impl Add<Value> for Value {
     type Output = Result<Value>;
 
@@ -173,3 +126,89 @@ impl Neg for Value {
         }
     }
 }
+
+impl Not for Value {
+    type Output = Value;
+
+    fn not(self) -> Self::Output {
+        Value::Bool(!self.is_truthy())
+    }
+}
+
+impl PartialEq for Value {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Value::Num(a), Value::Num(b)) => a == b,
+            (Value::Str(a), Value::Str(b)) => a == b,
+            (Value::Bool(a), Value::Bool(b)) => a == b,
+            (
+                Value::Function {
+                    code_loc: loc_a,
+                    arity: arity_a,
+                },
+                Value::Function {
+                    code_loc: loc_b,
+                    arity: arity_b,
+                },
+            ) => (loc_a, arity_a) == (loc_b, arity_b),
+            _ => false,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum Error {
+    Unary {
+        x: Value,
+        op: &'static str,
+    },
+    Binary {
+        a: Value,
+        b: Value,
+        op: &'static str,
+    },
+    Comparison {
+        a: Value,
+        b: Value,
+    },
+    WrongCall(Value),
+}
+
+impl Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Error::Unary { x, op } => write!(
+                f,
+                "Cannot apply operator '{}' to value of type '{}'",
+                op,
+                x.type_name()
+            ),
+            Error::Binary { a, b, op } => write!(
+                f,
+                "Cannot apply operator '{}' to values of type '{}' and '{}'",
+                op,
+                a.type_name(),
+                b.type_name()
+            ),
+            Error::Comparison { a, b } => write!(
+                f,
+                "Cannot compare values of type '{}' and '{}'",
+                a.type_name(),
+                b.type_name()
+            ),
+            Error::WrongCall(val) => write!(
+                f,
+                "Cannot call value of type {} like a function",
+                val.type_name()
+            ),
+        }
+    }
+}
+
+impl std::error::Error for Error {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        None
+    }
+}
+
+type Result<T> = std::result::Result<T, Error>;

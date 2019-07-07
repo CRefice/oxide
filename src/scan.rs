@@ -32,6 +32,9 @@ pub enum TokenType {
     Or,
     Equal,
     EqualEqual,
+    Bang,
+    BangEqual,
+    Not,
     Comma,
 }
 
@@ -62,8 +65,11 @@ impl Display for TokenType {
                 RightBracket => "}",
                 And => "and",
                 Or => "or",
+                Not => "not",
                 Equal => "=",
                 EqualEqual => "==",
+                Bang => "!",
+                BangEqual => "!=",
                 Comma => ",",
             }
         )
@@ -181,6 +187,7 @@ fn keyword(s: &str) -> Option<TokenType> {
         "fn" => Some(Function),
         "and" => Some(And),
         "or" => Some(Or),
+        "not" => Some(Not),
         "true" => Some(Literal(Value::Bool(true))),
         "false" => Some(Literal(Value::Bool(false))),
         "null" => Some(Literal(Value::Null)),
@@ -223,6 +230,13 @@ impl<'a> Iterator for Scanner<'a> {
                         Ok(Arrow)
                     }
                     _ => Ok(Equal),
+                },
+                '!' => match self.peek() {
+                    Some('=') => {
+                        self.advance(1);
+                        Ok(BangEqual)
+                    }
+                    _ => Ok(Bang),
                 },
                 c => {
                     let len = self.pos - pos;

@@ -189,7 +189,26 @@ impl Compiler {
     where
         I: Iterator<Item = ScanResult>,
     {
-        self.addition(it)
+        self.equality(it)
+    }
+
+    fn equality<I>(&mut self, it: &mut Peekable<I>) -> Result<()>
+    where
+        I: Iterator<Item = ScanResult>,
+    {
+        self.addition(it)?;
+        match peek(it)? {
+            Some(EqualEqual) | Some(BangEqual) => {
+                let op = advance(it)?.unwrap();
+                self.equality(it)?;
+                self.emit(Instruction::Equal);
+                if let BangEqual = op.ttype {
+                    self.emit(Instruction::Not);
+                }
+            }
+            _ => (),
+        }
+        Ok(())
     }
 
     fn addition<I>(&mut self, it: &mut Peekable<I>) -> Result<()>
@@ -241,6 +260,11 @@ impl Compiler {
                 advance(it)?;
                 self.unary(it)?;
                 self.emit(Instruction::Neg);
+            }
+            Some(Not) | Some(Bang) => {
+                advance(it)?;
+                self.unary(it)?;
+                self.emit(Instruction::Not);
             }
             _ => self.call(it)?,
         }
@@ -418,6 +442,7 @@ impl Compiler {
         advance(it)?; // Skip If
         self.expression(it)?; // Condition
         let jump_idx = self.stub_jump();
+        self.emit(Instruction::Pop);
         match peek(it)? {
             Some(Then) => {
                 advance(it)?;
@@ -436,6 +461,7 @@ impl Compiler {
             }
         };
         let jump_else_idx = self.stub_jump();
+        self.emit(Instruction::Pop);
         if let Some(Else) = peek(it)? {
             advance(it)?;
             self.expression(it)?;

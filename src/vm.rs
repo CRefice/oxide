@@ -25,6 +25,8 @@ pub enum Instruction {
     Mul,
     Div,
     Neg,
+    Not,
+    Equal,
 }
 
 #[derive(Debug)]
@@ -172,7 +174,7 @@ impl VirtualMachine {
             }
             Instruction::Jump(offset) => self.jump(*offset),
             Instruction::JumpIfZero(offset) => {
-                let cond = self.pop()?;
+                let cond = self.peek()?;
                 if !cond.is_truthy() {
                     self.jump(*offset)?;
                 }
@@ -251,6 +253,17 @@ impl VirtualMachine {
                 let a = self.pop()?;
                 let result = (-a)?;
                 self.stack.push(result);
+                Ok(())
+            }
+            Instruction::Not => {
+                let a = self.pop()?;
+                self.stack.push(!a);
+                Ok(())
+            }
+            Instruction::Equal => {
+                let b = self.pop()?;
+                let a = self.pop()?;
+                self.stack.push(Value::Bool(a == b));
                 Ok(())
             }
         }
