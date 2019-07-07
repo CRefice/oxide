@@ -17,7 +17,8 @@ pub enum Instruction {
     Pop,
     PopFrame(u16),
     Jump(i16),
-    JumpIfZero(i16),
+    JumpIfFalse(i16),
+    JumpIfTrue(i16),
     Call(u16),
     Ret,
     Add,
@@ -173,9 +174,16 @@ impl VirtualMachine {
                 Ok(())
             }
             Instruction::Jump(offset) => self.jump(*offset),
-            Instruction::JumpIfZero(offset) => {
+            Instruction::JumpIfFalse(offset) => {
                 let cond = self.peek()?;
                 if !cond.is_truthy() {
+                    self.jump(*offset)?;
+                }
+                Ok(())
+            }
+            Instruction::JumpIfTrue(offset) => {
+                let cond = self.peek()?;
+                if cond.is_truthy() {
                     self.jump(*offset)?;
                 }
                 Ok(())

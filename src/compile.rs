@@ -189,7 +189,43 @@ impl Compiler {
     where
         I: Iterator<Item = ScanResult>,
     {
-        self.equality(it)
+        self.or(it)
+    }
+
+    fn or<I>(&mut self, it: &mut Peekable<I>) -> Result<()>
+    where
+        I: Iterator<Item = ScanResult>,
+    {
+        self.and(it)?;
+        match peek(it)? {
+            Some(Or) => {
+                advance(it)?;
+                let jump_idx = self.stub_jump();
+                self.emit(Instruction::Pop);
+                self.or(it)?;
+                self.patch_jump(jump_idx, self.instrs.len() - 1, Instruction::JumpIfTrue)?;
+            }
+            _ => (),
+        }
+        Ok(())
+    }
+
+    fn and<I>(&mut self, it: &mut Peekable<I>) -> Result<()>
+    where
+        I: Iterator<Item = ScanResult>,
+    {
+        self.equality(it)?;
+        match peek(it)? {
+            Some(And) => {
+                advance(it)?;
+                let jump_idx = self.stub_jump();
+                self.emit(Instruction::Pop);
+                self.and(it)?;
+                self.patch_jump(jump_idx, self.instrs.len() - 1, Instruction::JumpIfFalse)?;
+            }
+            _ => (),
+        }
+        Ok(())
     }
 
     fn equality<I>(&mut self, it: &mut Peekable<I>) -> Result<()>
@@ -469,7 +505,7 @@ impl Compiler {
             self.emit(Instruction::Push(Value::Null));
         }
         self.patch_jump(jump_else_idx, self.instrs.len() - 1, Instruction::Jump)?;
-        self.patch_jump(jump_idx, jump_else_idx, Instruction::JumpIfZero)?;
+        self.patch_jump(jump_idx, jump_else_idx, Instruction::JumpIfFalse)?;
         Ok(())
     }
 
