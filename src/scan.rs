@@ -34,6 +34,10 @@ pub enum TokenType {
     EqualEqual,
     Bang,
     BangEqual,
+    Greater,
+    GreaterEqual,
+    Less,
+    LessEqual,
     Not,
     Comma,
 }
@@ -70,6 +74,10 @@ impl Display for TokenType {
                 EqualEqual => "==",
                 Bang => "!",
                 BangEqual => "!=",
+                Greater => ">",
+                GreaterEqual => ">=",
+                Less => "<",
+                LessEqual => "<=",
                 Comma => ",",
             }
         )
@@ -237,6 +245,20 @@ impl<'a> Iterator for Scanner<'a> {
                         Ok(BangEqual)
                     }
                     _ => Ok(Bang),
+                },
+                '>' => match self.peek() {
+                    Some('=') => {
+                        self.advance(1);
+                        Ok(GreaterEqual)
+                    }
+                    _ => Ok(Greater),
+                },
+                '<' => match self.peek() {
+                    Some('=') => {
+                        self.advance(1);
+                        Ok(LessEqual)
+                    }
+                    _ => Ok(Less),
                 },
                 c => {
                     let len = self.pos - pos;

@@ -1,5 +1,6 @@
 mod value;
 
+use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::convert::TryInto as _;
 use std::fmt::{self, Display};
@@ -28,7 +29,9 @@ pub enum Instruction {
     Neg,
     Not,
     Equal,
-    Temp,
+    Less,
+    Greater,
+    Temp, // Panics if encountered in code
 }
 
 #[derive(Debug)]
@@ -273,6 +276,28 @@ impl VirtualMachine {
                 let b = self.pop()?;
                 let a = self.pop()?;
                 self.stack.push(Value::Bool(a == b));
+                Ok(())
+            }
+            Instruction::Less => {
+                let b = self.pop()?;
+                let a = self.pop()?;
+                let result = if let Ordering::Less = a.cmp(&b)? {
+                    true
+                } else {
+                    false
+                };
+                self.stack.push(Value::Bool(result));
+                Ok(())
+            }
+            Instruction::Greater => {
+                let b = self.pop()?;
+                let a = self.pop()?;
+                let result = if let Ordering::Greater = a.cmp(&b)? {
+                    true
+                } else {
+                    false
+                };
+                self.stack.push(Value::Bool(result));
                 Ok(())
             }
             Instruction::Temp => {

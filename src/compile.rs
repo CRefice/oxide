@@ -29,11 +29,11 @@ where
     }
 }
 
-fn advance<I>(it: &mut Peekable<I>) -> Result<Option<Token>>
+fn advance<I>(it: &mut Peekable<I>) -> Result<Token>
 where
     I: Iterator<Item = ScanResult>,
 {
-    it.next().transpose().map_err(Error::Scan)
+    it.next().transpose()?.ok_or(Error::EndOfInput)
 }
 
 impl Compiler {
@@ -147,13 +147,40 @@ impl Compiler {
     where
         I: Iterator<Item = ScanResult>,
     {
-        self.addition(it)?;
+        self.comparison(it)?;
         match peek(it)? {
             Some(EqualEqual) | Some(BangEqual) => {
-                let op = advance(it)?.unwrap();
+                let op = advance(it)?;
                 self.equality(it)?;
                 self.emit(Instruction::Equal);
                 if let BangEqual = op.ttype {
+                    self.emit(Instruction::Not);
+                }
+            }
+            _ => (),
+        }
+        Ok(())
+    }
+
+    fn comparison<I>(&mut self, it: &mut Peekable<I>) -> Result<()>
+    where
+        I: Iterator<Item = ScanResult>,
+    {
+        self.addition(it)?;
+        match peek(it)? {
+            Some(Less) | Some(GreaterEqual) => {
+                let op = advance(it)?;
+                self.comparison(it)?;
+                self.emit(Instruction::Less);
+                if let GreaterEqual = op.ttype {
+                    self.emit(Instruction::Not);
+                }
+            }
+            Some(Greater) | Some(LessEqual) => {
+                let op = advance(it)?;
+                self.comparison(it)?;
+                self.emit(Instruction::Greater);
+                if let LessEqual = op.ttype {
                     self.emit(Instruction::Not);
                 }
             }
@@ -169,7 +196,7 @@ impl Compiler {
         self.multiplication(it)?;
         match peek(it)? {
             Some(Plus) | Some(Minus) => {
-                let op = advance(it)?.unwrap();
+                let op = advance(it)?;
                 self.addition(it)?;
                 match op.ttype {
                     Plus => self.emit(Instruction::Add),
@@ -189,7 +216,7 @@ impl Compiler {
         self.unary(it)?;
         match peek(it)? {
             Some(Star) | Some(Slash) => {
-                let op = advance(it)?.unwrap();
+                let op = advance(it)?;
                 self.multiplication(it)?;
                 match op.ttype {
                     Star => self.emit(Instruction::Mul),
@@ -246,7 +273,7 @@ impl Compiler {
             Function => self.fn_expr(it),
             Identifier(_) => self.variable(it),
             Literal(_) => {
-                let token = advance(it)?.unwrap();
+                let token = advance(it)?;
                 if let Literal(x) = token.ttype {
                     self.emit(Instruction::Push(x));
                     Ok(())
@@ -263,7 +290,7 @@ impl Compiler {
                     Identifier(String::new()),
                     Literal(Value::Null),
                 ];
-                let found = advance(it)?.unwrap();
+                let found = advance(it)?;
                 Err(Error::Mismatch { expected, found })
             }
         }
@@ -275,7 +302,7 @@ impl Compiler {
     {
         advance(it)?; // Skip LeftParen
         self.expression(it)?;
-        let found = advance(it)?.ok_or(Error::EndOfInput)?;
+        let found = advance(it)?;
         if let RightParen = found.ttype {
             advance(it)?;
             Ok(())
@@ -311,9 +338,9 @@ impl Compiler {
         I: Iterator<Item = ScanResult>,
     {
         advance(it)?; // Skip Let
-        let found = advance(it)?.ok_or(Error::EndOfInput)?;
+        let found = advance(it)?;
         if let Identifier(ident) = found.ttype {
-            let found = advance(it)?.ok_or(Error::EndOfInput)?;
+            let found = advance(it)?;
             if let Equal = found.ttype {
                 self.expression(it)?;
                 let idx = self.declare_local(ident)?;
@@ -334,9 +361,9 @@ impl Compiler {
         I: Iterator<Item = ScanResult>,
     {
         advance(it)?; // Skip Global
-        let found = advance(it)?.ok_or(Error::EndOfInput)?;
+        let found = advance(it)?;
         if let Identifier(ident) = found.ttype {
-            let found = advance(it)?.ok_or(Error::EndOfInput)?;
+            let found = advance(it)?;
             if let Equal = found.ttype {
                 self.expression(it)?;
                 self.emit(Instruction::SetGlobal(ident));
@@ -355,7 +382,7 @@ impl Compiler {
     where
         I: Iterator<Item = ScanResult>,
     {
-        let token = advance(it)?.unwrap();
+        let token = advance(it)?;
         let follow = peek(it)?;
         match (token.ttype, follow) {
             (Identifier(ident), Some(Equal)) => {
@@ -399,7 +426,7 @@ impl Compiler {
             }
             _ => {
                 let expected = vec![Then, LeftBracket];
-                let found = advance(it)?.unwrap();
+                let found = advance(it)?;
                 return Err(Error::Mismatch { expected, found });
             }
         };
@@ -439,7 +466,7 @@ impl Compiler {
             }
             Some(_) => {
                 let expected = vec![Arrow, LeftBracket];
-                let found = advance(it)?.unwrap();
+                let found = advance(it)?;
                 return Err(Error::Mismatch { expected, found });
             }
             None => {
@@ -461,9 +488,9 @@ impl Compiler {
         I: Iterator<Item = ScanResult>,
     {
         let mut arity = 0;
-        let found = advance(it)?.ok_or(Error::EndOfInput)?;
+        let found = advance(it)?;
         if let LeftParen = found.ttype {
-            let found = advance(it)?.ok_or(Error::EndOfInput)?;
+            let found = advance(it)?;
             match found.ttype {
                 RightParen => Ok(arity),
                 Identifier(a) => {
@@ -471,7 +498,7 @@ impl Compiler {
                     arity = 1;
                     while let Some(Comma) = peek(it)? {
                         advance(it)?;
-                        let found = advance(it)?.ok_or(Error::EndOfInput)?;
+                        let found = advance(it)?;
                         if let Identifier(a) = found.ttype {
                             self.declare_local(a)?;
                             arity += 1;
@@ -480,7 +507,7 @@ impl Compiler {
                             return Err(Error::Mismatch { expected, found });
                         }
                     }
-                    let found = advance(it)?.ok_or(Error::EndOfInput)?;
+                    let found = advance(it)?;
                     if let RightParen = found.ttype {
                         Ok(arity)
                     } else {
@@ -515,7 +542,7 @@ impl Compiler {
                     self.expression(it)?;
                     argc += 1;
                 }
-                let found = advance(it)?.ok_or(Error::EndOfInput)?;
+                let found = advance(it)?;
                 if let RightParen = found.ttype {
                     Ok(argc)
                 } else {

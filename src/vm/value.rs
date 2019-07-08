@@ -1,3 +1,4 @@
+use std::cmp::Ordering;
 use std::fmt::{self, Debug, Display};
 use std::ops::*;
 use std::rc::Rc;
@@ -38,6 +39,13 @@ impl Value {
             Value::Function { .. } => "Fn",
             Value::NativeFn { .. } => "NativeFn",
         }
+    }
+
+    pub fn cmp(&self, other: &Self) -> Result<Ordering> {
+        self.partial_cmp(other).ok_or(Error::Comparison {
+            a: self.clone(),
+            b: other.clone(),
+        })
     }
 }
 
@@ -152,6 +160,17 @@ impl PartialEq for Value {
                 },
             ) => (loc_a, arity_a) == (loc_b, arity_b),
             _ => false,
+        }
+    }
+}
+
+impl PartialOrd for Value {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        match (self, other) {
+            (Value::Num(a), Value::Num(b)) => a.partial_cmp(b),
+            (Value::Str(a), Value::Str(b)) => a.partial_cmp(b),
+            (Value::Bool(a), Value::Bool(b)) => a.partial_cmp(b),
+            _ => None,
         }
     }
 }
