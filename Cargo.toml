@@ -5,3 +5,4 @@ authors = ["Carlo <CRefice@gmail.com>"]
 edition = "2018"
 
 [dependencies]
+rustyline = "*"

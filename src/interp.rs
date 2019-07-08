@@ -2,8 +2,11 @@ mod libs;
 
 use std::fmt::{self, Display};
 use std::fs::File;
-use std::io::{self, BufRead as _, Read as _};
+use std::io::{self, Read as _};
 use std::path::Path;
+
+use rustyline::error::ReadlineError;
+use rustyline::Editor;
 
 use crate::compile::{self, Compiler};
 use crate::scan::Scanner;
@@ -79,11 +82,26 @@ impl Interpreter {
     }
 
     pub fn repl(&mut self) {
+        let mut rl = Editor::<()>::new();
         let mut compiler = Compiler::new();
-        for line in io::stdin().lock().lines() {
-            match self.run_line(line.as_ref().unwrap(), &mut compiler) {
-                Ok(val) => println!("{}", val),
-                Err(err) => println!("{}", err),
+        loop {
+            let readline = rl.readline(">> ");
+            match readline {
+                Ok(line) => {
+                    let line = line.as_str();
+                    rl.add_history_entry(line);
+                    match self.run_line(line, &mut compiler) {
+                        Ok(val) => println!("{}", val),
+                        Err(err) => println!("{}", err),
+                    }
+                }
+                Err(ReadlineError::Interrupted) | Err(ReadlineError::Eof) => {
+                    break;
+                }
+                Err(err) => {
+                    println!("Error: {:?}", err);
+                    break;
+                }
             }
         }
     }
