@@ -6,85 +6,6 @@ use std::num::TryFromIntError;
 use crate::scan::{self, Token, TokenType, TokenType::*};
 use crate::vm::{Instruction, Value};
 
-#[derive(Debug)]
-pub enum Error {
-    EndOfInput,
-    Scan(scan::Error),
-    Conversion(TryFromIntError),
-    Mismatch {
-        expected: Vec<TokenType>,
-        found: Token,
-    },
-}
-
-impl From<TryFromIntError> for Error {
-    fn from(err: TryFromIntError) -> Self {
-        Error::Conversion(err)
-    }
-}
-
-impl From<scan::Error> for Error {
-    fn from(err: scan::Error) -> Self {
-        Error::Scan(err)
-    }
-}
-
-fn human_readable_fmt<T: Display>(slice: &[T], f: &mut fmt::Formatter) -> fmt::Result {
-    match slice.len() {
-        0 => write!(f, "nothing"),
-        1 => write!(f, "'{}'", slice[0].to_string()),
-        x => {
-            let mut it = slice[..x - 1].iter();
-            write!(f, "one of '{}'", it.next().unwrap())?;
-            for val in it {
-                write!(f, ", '{}'", val)?;
-            }
-            write!(f, " or '{}'", slice.last().unwrap())
-        }
-    }
-}
-
-impl Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Error::EndOfInput => write!(f, "Unexpected end of file"),
-            Error::Scan(err) => write!(f, "{}", err),
-            Error::Conversion(err) => write!(f, "Number too big to fit into VM code: {}", err),
-            Error::Mismatch { expected, found } => {
-                write!(f, "Mismatched token: expected ")?;
-                human_readable_fmt(&expected, f)?;
-                write!(f, ", found '{}'", found.ttype)
-            }
-        }
-    }
-}
-
-impl std::error::Error for Error {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Error::Scan(err) => Some(err),
-            Error::Conversion(err) => Some(err),
-            _ => None,
-        }
-    }
-}
-
-fn unexpected<I>(expected: Vec<TokenType>, it: &mut Peekable<I>) -> Error
-where
-    I: Iterator<Item = ScanResult>,
-{
-    match it
-        .next()
-        .map(|res| res.map_err(Error::Scan))
-        .unwrap_or_else(|| Err(Error::EndOfInput))
-    {
-        Ok(found) => Error::Mismatch { expected, found },
-        Err(err) => err,
-    }
-}
-
-type Result<T> = std::result::Result<T, Error>;
-
 struct VarDecl {
     name: String,
     index: u16,
@@ -146,7 +67,7 @@ impl Compiler {
 
     fn stub_jump(&mut self) -> usize {
         let idx = self.instrs.len();
-        self.emit(Instruction::Pop); // Temporary for jump over if stmt
+        self.emit(Instruction::Temp);
         idx
     }
 
@@ -197,15 +118,12 @@ impl Compiler {
         I: Iterator<Item = ScanResult>,
     {
         self.and(it)?;
-        match peek(it)? {
-            Some(Or) => {
-                advance(it)?;
-                let jump_idx = self.stub_jump();
-                self.emit(Instruction::Pop);
-                self.or(it)?;
-                self.patch_jump(jump_idx, self.instrs.len() - 1, Instruction::JumpIfTrue)?;
-            }
-            _ => (),
+        if let Some(Or) = peek(it)? {
+            advance(it)?;
+            let jump_idx = self.stub_jump();
+            self.emit(Instruction::Pop);
+            self.or(it)?;
+            self.patch_jump(jump_idx, self.instrs.len() - 1, Instruction::JumpIfTrue)?;
         }
         Ok(())
     }
@@ -215,15 +133,12 @@ impl Compiler {
         I: Iterator<Item = ScanResult>,
     {
         self.equality(it)?;
-        match peek(it)? {
-            Some(And) => {
-                advance(it)?;
-                let jump_idx = self.stub_jump();
-                self.emit(Instruction::Pop);
-                self.and(it)?;
-                self.patch_jump(jump_idx, self.instrs.len() - 1, Instruction::JumpIfFalse)?;
-            }
-            _ => (),
+        if let Some(And) = peek(it)? {
+            advance(it)?;
+            let jump_idx = self.stub_jump();
+            self.emit(Instruction::Pop);
+            self.and(it)?;
+            self.patch_jump(jump_idx, self.instrs.len() - 1, Instruction::JumpIfFalse)?;
         }
         Ok(())
     }
@@ -259,7 +174,7 @@ impl Compiler {
                 match op.ttype {
                     Plus => self.emit(Instruction::Add),
                     Minus => self.emit(Instruction::Sub),
-                    _ => (),
+                    _ => unreachable!(),
                 }
             }
             _ => (),
@@ -360,17 +275,13 @@ impl Compiler {
     {
         advance(it)?; // Skip LeftParen
         self.expression(it)?;
-        match peek(it)? {
-            Some(RightParen) => {
-                advance(it)?;
-                Ok(())
-            }
-            Some(_) => {
-                let found = advance(it)?.unwrap();
-                let expected = vec![RightParen];
-                Err(Error::Mismatch { expected, found })
-            }
-            _ => Err(Error::EndOfInput),
+        let found = advance(it)?.ok_or(Error::EndOfInput)?;
+        if let RightParen = found.ttype {
+            advance(it)?;
+            Ok(())
+        } else {
+            let expected = vec![RightParen];
+            Err(Error::Mismatch { expected, found })
         }
     }
 
@@ -391,9 +302,7 @@ impl Compiler {
         }
         let frame_len = self.locals.len() - frame_start;
         self.emit(Instruction::PopFrame(frame_len.try_into()?));
-        while self.locals.len() > frame_start {
-            self.locals.pop();
-        }
+        self.locals.drain(frame_start..);
         Ok(())
     }
 
@@ -479,21 +388,19 @@ impl Compiler {
         self.expression(it)?; // Condition
         let jump_idx = self.stub_jump();
         self.emit(Instruction::Pop);
-        match peek(it)? {
-            Some(Then) => {
+        let token = peek(it)?.ok_or(Error::EndOfInput)?;
+        match token {
+            Then => {
                 advance(it)?;
                 self.expression(it)?;
             }
-            Some(LeftBracket) => {
+            LeftBracket => {
                 self.block(it)?;
             }
-            Some(_) => {
+            _ => {
                 let expected = vec![Then, LeftBracket];
                 let found = advance(it)?.unwrap();
                 return Err(Error::Mismatch { expected, found });
-            }
-            None => {
-                return Err(Error::EndOfInput);
             }
         };
         let jump_else_idx = self.stub_jump();
@@ -553,13 +460,13 @@ impl Compiler {
     where
         I: Iterator<Item = ScanResult>,
     {
-        let typ = |t: Token| t.ttype;
-
         let mut arity = 0;
-        if let Some(LeftParen) = advance(it)?.map(typ) {
-            match advance(it)?.map(typ) {
-                Some(RightParen) => Ok(arity),
-                Some(Identifier(a)) => {
+        let found = advance(it)?.ok_or(Error::EndOfInput)?;
+        if let LeftParen = found.ttype {
+            let found = advance(it)?.ok_or(Error::EndOfInput)?;
+            match found.ttype {
+                RightParen => Ok(arity),
+                Identifier(a) => {
                     self.declare_local(a)?;
                     arity = 1;
                     while let Some(Comma) = peek(it)? {
@@ -573,17 +480,22 @@ impl Compiler {
                             return Err(Error::Mismatch { expected, found });
                         }
                     }
-                    if let Some(RightParen) = peek(it)? {
-                        advance(it)?;
+                    let found = advance(it)?.ok_or(Error::EndOfInput)?;
+                    if let RightParen = found.ttype {
                         Ok(arity)
                     } else {
-                        Err(unexpected(vec![RightParen, Comma], it))
+                        let expected = vec![RightParen, Comma];
+                        Err(Error::Mismatch { expected, found })
                     }
                 }
-                _ => Err(unexpected(vec![RightParen, Identifier(String::new())], it)),
+                _ => {
+                    let expected = vec![Identifier(String::new()), RightParen];
+                    Err(Error::Mismatch { expected, found })
+                }
             }
         } else {
-            Err(unexpected(vec![LeftParen], it))
+            let expected = vec![LeftParen];
+            Err(Error::Mismatch { expected, found })
         }
     }
 
@@ -603,13 +515,80 @@ impl Compiler {
                     self.expression(it)?;
                     argc += 1;
                 }
-                if let Some(RightParen) = peek(it)? {
-                    advance(it)?;
+                let found = advance(it)?.ok_or(Error::EndOfInput)?;
+                if let RightParen = found.ttype {
                     Ok(argc)
                 } else {
-                    Err(unexpected(vec![RightParen, Comma], it))
+                    let expected = vec![RightParen, Comma];
+                    Err(Error::Mismatch { expected, found })
                 }
             }
         }
     }
 }
+
+#[derive(Debug)]
+pub enum Error {
+    EndOfInput,
+    Scan(scan::Error),
+    Conversion(TryFromIntError),
+    Mismatch {
+        expected: Vec<TokenType>,
+        found: Token,
+    },
+}
+
+impl From<TryFromIntError> for Error {
+    fn from(err: TryFromIntError) -> Self {
+        Error::Conversion(err)
+    }
+}
+
+impl From<scan::Error> for Error {
+    fn from(err: scan::Error) -> Self {
+        Error::Scan(err)
+    }
+}
+
+fn human_readable_fmt<T: Display>(slice: &[T], f: &mut fmt::Formatter) -> fmt::Result {
+    match slice.len() {
+        0 => write!(f, "nothing"),
+        1 => write!(f, "'{}'", slice[0].to_string()),
+        _ => {
+            let (last, rest) = slice.split_last().unwrap();
+            let (first, middle) = rest.split_first().unwrap();
+            write!(f, "one of '{}'", first)?;
+            for val in middle {
+                write!(f, ", '{}'", val)?;
+            }
+            write!(f, " or '{}'", last)
+        }
+    }
+}
+
+impl Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Error::EndOfInput => write!(f, "Unexpected end of file"),
+            Error::Scan(err) => write!(f, "{}", err),
+            Error::Conversion(err) => write!(f, "Number too big to fit into VM code: {}", err),
+            Error::Mismatch { expected, found } => {
+                write!(f, "Mismatched token: expected ")?;
+                human_readable_fmt(&expected, f)?;
+                write!(f, ", found '{}'", found.ttype)
+            }
+        }
+    }
+}
+
+impl std::error::Error for Error {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Error::Scan(err) => Some(err),
+            Error::Conversion(err) => Some(err),
+            _ => None,
+        }
+    }
+}
+
+type Result<T> = std::result::Result<T, Error>;

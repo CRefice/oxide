@@ -28,6 +28,7 @@ pub enum Instruction {
     Neg,
     Not,
     Equal,
+    Temp,
 }
 
 #[derive(Debug)]
@@ -273,6 +274,9 @@ impl VirtualMachine {
                 let a = self.pop()?;
                 self.stack.push(Value::Bool(a == b));
                 Ok(())
+            }
+            Instruction::Temp => {
+                panic!("Error during compilation: tried executing temporary instruction!")
             }
         }
     }
