@@ -86,6 +86,8 @@ impl Add<Value> for Value {
         match (self, other) {
             (Value::Num(a), Value::Num(b)) => Ok(Value::Num(a + b)),
             (Value::Str(a), Value::Str(b)) => Ok(Value::Str(format!("{}{}", a, b))),
+            (Value::Str(a), Value::Num(b)) => Ok(Value::Str(format!("{}{}", a, b))),
+            (Value::Str(a), Value::Bool(b)) => Ok(Value::Str(format!("{}{}", a, b))),
             (a, b) => Err(Error::Binary { a, b, op: "+" }),
         }
     }

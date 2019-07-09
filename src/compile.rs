@@ -270,6 +270,7 @@ impl Compiler {
             LeftParen => self.grouping(it),
             LeftBracket => self.block(it),
             If => self.if_expr(it),
+            While => self.while_expr(it),
             Function => self.fn_expr(it),
             Identifier(_) => self.variable(it),
             Literal(_) => {
@@ -286,6 +287,7 @@ impl Compiler {
                     LeftParen,
                     LeftBracket,
                     If,
+                    While,
                     Function,
                     Identifier(String::new()),
                     Literal(Value::Null),
@@ -440,6 +442,35 @@ impl Compiler {
         }
         self.patch_jump(jump_else_idx, self.instrs.len() - 1, Instruction::Jump)?;
         self.patch_jump(jump_idx, jump_else_idx, Instruction::JumpIfFalse)?;
+        Ok(())
+    }
+
+    fn while_expr<I>(&mut self, it: &mut Peekable<I>) -> Result<()>
+    where
+        I: Iterator<Item = ScanResult>,
+    {
+        advance(it)?; // Skip While
+        self.emit(Instruction::Push(Value::Null));
+        let loop_idx = self.instrs.len();
+        self.expression(it)?; // Condition
+        let jump_idx = self.stub_jump();
+        // Pop the condition value (If jump not taken)
+        self.emit(Instruction::Pop);
+
+        // Pop last iteration's value
+        self.emit(Instruction::Pop);
+        if let LeftBracket = peek(it)?.ok_or(Error::EndOfInput)? {
+            self.block(it)?;
+        } else {
+            let expected = vec![LeftBracket];
+            let found = advance(it)?;
+            return Err(Error::Mismatch { expected, found });
+        }
+        let loop_len: i16 = (self.instrs.len() - (loop_idx - 1)).try_into()?;
+        self.emit(Instruction::Jump(-loop_len));
+        self.patch_jump(jump_idx, self.instrs.len() - 1, Instruction::JumpIfFalse)?;
+        // Pop the condition value (If jump taken)
+        self.emit(Instruction::Pop);
         Ok(())
     }
 

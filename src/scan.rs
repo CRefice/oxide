@@ -18,6 +18,7 @@ pub enum TokenType {
     If,
     Then,
     Else,
+    While,
     Function,
     Minus,
     Plus,
@@ -57,6 +58,7 @@ impl Display for TokenType {
                 If => "if",
                 Then => "then",
                 Else => "else",
+                While => "while",
                 Function => "fn",
                 Minus => "-",
                 Plus => "+",
@@ -192,6 +194,7 @@ fn keyword(s: &str) -> Option<TokenType> {
         "if" => Some(If),
         "then" => Some(Then),
         "else" => Some(Else),
+        "while" => Some(While),
         "fn" => Some(Function),
         "and" => Some(And),
         "or" => Some(Or),
@@ -223,7 +226,13 @@ impl<'a> Iterator for Scanner<'a> {
                 ',' => Ok(Comma),
                 '-' => Ok(Minus),
                 '*' => Ok(Star),
-                '/' => Ok(Slash),
+                '/' => match self.peek() {
+                    Some('/') => {
+                        self.advance_while(|c| c != '\n');
+                        return self.next();
+                    }
+                    _ => Ok(Slash),
+                },
                 '(' => Ok(LeftParen),
                 ')' => Ok(RightParen),
                 '{' => Ok(LeftBracket),
