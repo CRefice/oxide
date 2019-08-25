@@ -118,12 +118,16 @@ impl Compiler {
         I: Iterator<Item = ScanResult>,
     {
         self.and(it)?;
-        if let Some(Or) = peek(it)? {
-            advance(it)?;
-            let jump_idx = self.stub_jump();
-            self.emit(Instruction::Pop);
-            self.or(it)?;
-            self.patch_jump(jump_idx, self.instrs.len() - 1, Instruction::JumpIfTrue)?;
+        loop {
+            if let Some(Or) = peek(it)? {
+                advance(it)?;
+                let jump_idx = self.stub_jump();
+                self.emit(Instruction::Pop);
+                self.and(it)?;
+                self.patch_jump(jump_idx, self.instrs.len() - 1, Instruction::JumpIfTrue)?;
+            } else {
+                break;
+            }
         }
         Ok(())
     }
@@ -133,12 +137,16 @@ impl Compiler {
         I: Iterator<Item = ScanResult>,
     {
         self.equality(it)?;
-        if let Some(And) = peek(it)? {
-            advance(it)?;
-            let jump_idx = self.stub_jump();
-            self.emit(Instruction::Pop);
-            self.and(it)?;
-            self.patch_jump(jump_idx, self.instrs.len() - 1, Instruction::JumpIfFalse)?;
+        loop {
+            if let Some(And) = peek(it)? {
+                advance(it)?;
+                let jump_idx = self.stub_jump();
+                self.emit(Instruction::Pop);
+                self.equality(it)?;
+                self.patch_jump(jump_idx, self.instrs.len() - 1, Instruction::JumpIfFalse)?;
+            } else {
+                break;
+            }
         }
         Ok(())
     }
@@ -148,16 +156,18 @@ impl Compiler {
         I: Iterator<Item = ScanResult>,
     {
         self.comparison(it)?;
-        match peek(it)? {
-            Some(EqualEqual) | Some(BangEqual) => {
-                let op = advance(it)?;
-                self.equality(it)?;
-                self.emit(Instruction::Equal);
-                if let BangEqual = op.ttype {
-                    self.emit(Instruction::Not);
+        loop {
+            match peek(it)? {
+                Some(EqualEqual) | Some(BangEqual) => {
+                    let op = advance(it)?;
+                    self.comparison(it)?;
+                    self.emit(Instruction::Equal);
+                    if let BangEqual = op.ttype {
+                        self.emit(Instruction::Not);
+                    }
                 }
+                _ => break,
             }
-            _ => (),
         }
         Ok(())
     }
@@ -167,24 +177,26 @@ impl Compiler {
         I: Iterator<Item = ScanResult>,
     {
         self.addition(it)?;
-        match peek(it)? {
-            Some(Less) | Some(GreaterEqual) => {
-                let op = advance(it)?;
-                self.comparison(it)?;
-                self.emit(Instruction::Less);
-                if let GreaterEqual = op.ttype {
-                    self.emit(Instruction::Not);
+        loop {
+            match peek(it)? {
+                Some(Less) | Some(GreaterEqual) => {
+                    let op = advance(it)?;
+                    self.addition(it)?;
+                    self.emit(Instruction::Less);
+                    if let GreaterEqual = op.ttype {
+                        self.emit(Instruction::Not);
+                    }
                 }
-            }
-            Some(Greater) | Some(LessEqual) => {
-                let op = advance(it)?;
-                self.comparison(it)?;
-                self.emit(Instruction::Greater);
-                if let LessEqual = op.ttype {
-                    self.emit(Instruction::Not);
+                Some(Greater) | Some(LessEqual) => {
+                    let op = advance(it)?;
+                    self.addition(it)?;
+                    self.emit(Instruction::Greater);
+                    if let LessEqual = op.ttype {
+                        self.emit(Instruction::Not);
+                    }
                 }
+                _ => break,
             }
-            _ => (),
         }
         Ok(())
     }
@@ -194,17 +206,19 @@ impl Compiler {
         I: Iterator<Item = ScanResult>,
     {
         self.multiplication(it)?;
-        match peek(it)? {
-            Some(Plus) | Some(Minus) => {
-                let op = advance(it)?;
-                self.addition(it)?;
-                match op.ttype {
-                    Plus => self.emit(Instruction::Add),
-                    Minus => self.emit(Instruction::Sub),
-                    _ => unreachable!(),
+        loop {
+            match peek(it)? {
+                Some(Plus) | Some(Minus) => {
+                    let op = advance(it)?;
+                    self.multiplication(it)?;
+                    match op.ttype {
+                        Plus => self.emit(Instruction::Add),
+                        Minus => self.emit(Instruction::Sub),
+                        _ => unreachable!(),
+                    }
                 }
+                _ => break,
             }
-            _ => (),
         }
         Ok(())
     }
@@ -214,17 +228,19 @@ impl Compiler {
         I: Iterator<Item = ScanResult>,
     {
         self.unary(it)?;
-        match peek(it)? {
-            Some(Star) | Some(Slash) => {
-                let op = advance(it)?;
-                self.multiplication(it)?;
-                match op.ttype {
-                    Star => self.emit(Instruction::Mul),
-                    Slash => self.emit(Instruction::Div),
-                    _ => unreachable!(),
+        loop {
+            match peek(it)? {
+                Some(Star) | Some(Slash) => {
+                    let op = advance(it)?;
+                    self.unary(it)?;
+                    match op.ttype {
+                        Star => self.emit(Instruction::Mul),
+                        Slash => self.emit(Instruction::Div),
+                        _ => unreachable!(),
+                    }
                 }
+                _ => break,
             }
-            _ => (),
         }
         Ok(())
     }
