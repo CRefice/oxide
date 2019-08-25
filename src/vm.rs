@@ -5,10 +5,11 @@ use std::collections::HashMap;
 use std::convert::TryInto as _;
 use std::fmt::{self, Display};
 use std::num::TryFromIntError;
+use std::rc::Rc;
 
 pub use value::Value;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Instruction {
     Push(Value),
     GetLocal(u16),
@@ -34,58 +35,34 @@ pub enum Instruction {
     Temp, // Panics if encountered in code
 }
 
-#[derive(Debug)]
-pub enum Error {
-    Value(value::Error),
-    Conversion(TryFromIntError),
-    UndeclaredGlobal(String),
-    WrongArgCount { expected: usize, found: u16 },
-    EmptyStack,
+pub type Chunk = Rc<Vec<Instruction>>;
+
+#[derive(Debug, Clone)]
+pub struct CodeLocation {
+    chunk: Chunk,
+    ip: usize,
 }
 
-impl From<value::Error> for Error {
-    fn from(err: value::Error) -> Self {
-        Error::Value(err)
+impl CodeLocation {
+    pub fn new(chunk: Chunk) -> Self {
+        CodeLocation { chunk, ip: 0 }
+    }
+
+    pub fn is_at_end(&self) -> bool {
+        self.ip == self.chunk.len()
+    }
+
+    pub fn jump(&mut self, offset: i16) -> Result<()> {
+        let mut ip: isize = self.ip.try_into()?;
+        ip += isize::from(offset);
+        self.ip = ip.try_into()?;
+        Ok(())
     }
 }
-
-impl From<TryFromIntError> for Error {
-    fn from(err: TryFromIntError) -> Self {
-        Error::Conversion(err)
-    }
-}
-
-impl Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Error::Value(err) => write!(f, "{}", err),
-            Error::Conversion(err) => write!(f, "Number too big to fit into VM code: {}", err),
-            Error::UndeclaredGlobal(name) => write!(f, "Nonexistent variable '{}'", name),
-            Error::WrongArgCount { expected, found } => write!(
-                f,
-                "Wrong argument count to function call: expected {}, found {}",
-                expected, found
-            ),
-            Error::EmptyStack => write!(f, "Cannot return value out of an empty stack"),
-        }
-    }
-}
-
-impl std::error::Error for Error {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Error::Value(err) => Some(err),
-            Error::Conversion(err) => Some(err),
-            _ => None,
-        }
-    }
-}
-
-type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug)]
 struct Frame {
-    call_site: usize,
+    call_loc: CodeLocation,
     stack_depth: usize,
 }
 
@@ -93,16 +70,16 @@ pub struct VirtualMachine {
     globals: HashMap<String, Value>,
     stack: Vec<Value>,
     frames: Vec<Frame>,
-    ip: usize,
+    loc: CodeLocation,
 }
 
 impl VirtualMachine {
-    pub fn new() -> Self {
+    pub fn new(chunk: Chunk) -> Self {
         VirtualMachine {
             globals: HashMap::new(),
-            stack: Vec::new(),
+            stack: vec![Value::Null],
             frames: Vec::new(),
-            ip: 0,
+            loc: CodeLocation::new(chunk),
         }
     }
 
@@ -118,21 +95,14 @@ impl VirtualMachine {
         self.globals.insert(name, val);
     }
 
-    fn jump(&mut self, offset: i16) -> Result<()> {
-        let mut ip: isize = self.ip.try_into()?;
-        ip += isize::from(offset);
-        self.ip = ip.try_into()?;
-        Ok(())
-    }
-
     fn local_idx(&mut self, offset: u16) -> usize {
         let frame_idx = self.frames.last().map(|f| f.stack_depth).unwrap_or(0);
         usize::from(offset) + frame_idx
     }
 
-    pub fn step(&mut self, code: &[Instruction]) -> Result<()> {
-        let opcode = &code[self.ip];
-        self.ip += 1;
+    fn step(&mut self) -> Result<()> {
+        let opcode = self.loc.chunk[self.loc.ip].clone();
+        self.loc.ip += 1;
         match opcode {
             Instruction::Push(val) => {
                 self.stack.push(val.clone());
@@ -141,7 +111,7 @@ impl VirtualMachine {
             Instruction::Pop => self.pop().map(|_| ()),
             Instruction::PopFrame(n) => {
                 let top = self.pop()?;
-                for _ in 0..*n {
+                for _ in 0..n {
                     self.pop()?;
                 }
                 self.stack.push(top);
@@ -150,7 +120,7 @@ impl VirtualMachine {
             Instruction::GetGlobal(name) => {
                 let val = self
                     .globals
-                    .get(name)
+                    .get(&name)
                     .cloned()
                     .ok_or_else(|| Error::UndeclaredGlobal(name.clone()))?;
                 self.stack.push(val);
@@ -162,7 +132,7 @@ impl VirtualMachine {
                 Ok(())
             }
             Instruction::GetLocal(idx) => {
-                let idx = self.local_idx(*idx);
+                let idx = self.local_idx(idx);
                 let val = self
                     .stack
                     .get(idx)
@@ -173,64 +143,59 @@ impl VirtualMachine {
             }
             Instruction::SetLocal(idx) => {
                 let val = self.peek()?;
-                let idx = self.local_idx(*idx);
+                let idx = self.local_idx(idx);
                 self.stack[idx] = val;
                 Ok(())
             }
-            Instruction::Jump(offset) => self.jump(*offset),
+            Instruction::Jump(offset) => self.loc.jump(offset),
             Instruction::JumpIfFalse(offset) => {
                 let cond = self.peek()?;
                 if !cond.is_truthy() {
-                    self.jump(*offset)?;
+                    self.loc.jump(offset)?;
                 }
                 Ok(())
             }
             Instruction::JumpIfTrue(offset) => {
                 let cond = self.peek()?;
                 if cond.is_truthy() {
-                    self.jump(*offset)?;
+                    self.loc.jump(offset)?;
                 }
                 Ok(())
             }
             Instruction::Call(argc) => {
-                let arg_len = usize::from(*argc);
-                // TODO: Remove this once/if you implement an AST.
-                let args = self
-                    .stack
-                    .drain(self.stack.len() - arg_len..)
-                    .collect::<Vec<_>>();
-                let callable = self.pop()?;
-                self.stack.extend(args);
+                let argn = usize::from(argc);
+                let index = self.stack.len() - argn - 1;
+                let callable = &self.stack[index];
                 match callable {
-                    Value::Function { code_loc, arity } => {
-                        if arg_len == arity {
+                    Value::Function { chunk, arity, .. } => {
+                        if &argn == arity {
                             let frame = Frame {
-                                call_site: self.ip,
-                                stack_depth: self.stack.len() - arity,
+                                call_loc: self.loc.clone(),
+                                stack_depth: self.stack.len() - arity - 1,
                             };
                             self.frames.push(frame);
-                            self.ip = code_loc;
+                            self.loc = CodeLocation::new(chunk.clone());
                             Ok(())
                         } else {
                             Err(Error::WrongArgCount {
-                                expected: arity,
-                                found: *argc,
+                                expected: *arity,
+                                found: argc,
                             })
                         }
                     }
                     Value::NativeFn { f, arity } => {
                         let begin = self.stack.len() - arity;
-                        let result = f(&self.stack[begin..]);
+                        let result = f(&self.stack[begin..])?;
                         self.stack.drain(begin..);
                         self.stack.push(result);
                         Ok(())
                     }
-                    _ => Err(Error::Value(value::Error::WrongCall(callable))),
+                    _ => Err(Error::Value(value::Error::WrongCall(callable.clone()))),
                 }
             }
             Instruction::Ret => {
                 let frame = self.frames.pop().ok_or(Error::EmptyStack)?;
-                self.ip = frame.call_site;
+                self.loc = frame.call_loc;
                 Ok(())
             }
             Instruction::Add => {
@@ -306,13 +271,67 @@ impl VirtualMachine {
         }
     }
 
-    pub fn run(&mut self, code: &[Instruction]) -> Result<()> {
-        while self.ip < code.len() {
-            if let e @ Err(_) = self.step(code) {
-                self.ip = code.len();
+    pub fn run(&mut self) -> Result<()> {
+        while !self.loc.is_at_end() {
+            if let e @ Err(_) = self.step() {
                 return e;
             }
         }
         Ok(())
     }
+
+    pub fn change_chunk(&mut self, chunk: Chunk) {
+        self.loc = CodeLocation::new(chunk);
+    }
 }
+
+pub type ValueError = value::Error;
+
+#[derive(Debug)]
+pub enum Error {
+    Value(ValueError),
+    Conversion(TryFromIntError),
+    UndeclaredGlobal(String),
+    WrongArgCount { expected: usize, found: u16 },
+    EmptyStack,
+}
+
+impl From<ValueError> for Error {
+    fn from(err: ValueError) -> Self {
+        Error::Value(err)
+    }
+}
+
+impl From<TryFromIntError> for Error {
+    fn from(err: TryFromIntError) -> Self {
+        Error::Conversion(err)
+    }
+}
+
+impl Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Error::Value(err) => write!(f, "{}", err),
+            Error::Conversion(err) => write!(f, "Number too big to fit into VM code: {}", err),
+            Error::UndeclaredGlobal(name) => write!(f, "Nonexistent variable '{}'", name),
+            Error::WrongArgCount { expected, found } => write!(
+                f,
+                "Wrong argument count to function call: expected {}, found {}",
+                expected, found
+            ),
+            Error::EmptyStack => write!(f, "Cannot return value out of an empty stack"),
+        }
+    }
+}
+
+impl std::error::Error for Error {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Error::Value(err) => Some(err),
+            Error::Conversion(err) => Some(err),
+            _ => None,
+        }
+    }
+}
+
+pub type Result<T> = std::result::Result<T, Error>;

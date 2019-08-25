@@ -86,34 +86,6 @@ impl Display for TokenType {
     }
 }
 
-#[derive(Debug, Clone)]
-pub enum Error {
-    UnclosedQuote { span: Span },
-    ParseNum { cause: ParseFloatError, span: Span },
-    Unrecognized { c: char, span: Span },
-}
-
-impl Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Error::UnclosedQuote { .. } => write!(f, "Unmatched opening quote"),
-            Error::ParseNum { cause, .. } => write!(f, "Unable to parse number: {}", cause),
-            Error::Unrecognized { c, .. } => write!(f, "Invalid token '{}'", c),
-        }
-    }
-}
-
-impl std::error::Error for Error {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Error::ParseNum { cause, .. } => Some(cause),
-            _ => None,
-        }
-    }
-}
-
-pub type Result<T> = std::result::Result<T, Error>;
-
 #[derive(Debug)]
 pub struct Token {
     pub ttype: TokenType,
@@ -281,3 +253,31 @@ impl<'a> Iterator for Scanner<'a> {
         Some(result.map(|ttype| Token { ttype, span }))
     }
 }
+
+#[derive(Debug, Clone)]
+pub enum Error {
+    UnclosedQuote { span: Span },
+    ParseNum { cause: ParseFloatError, span: Span },
+    Unrecognized { c: char, span: Span },
+}
+
+impl Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Error::UnclosedQuote { .. } => write!(f, "Unmatched opening quote"),
+            Error::ParseNum { cause, .. } => write!(f, "Unable to parse number: {}", cause),
+            Error::Unrecognized { c, .. } => write!(f, "Invalid token '{}'", c),
+        }
+    }
+}
+
+impl std::error::Error for Error {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Error::ParseNum { cause, .. } => Some(cause),
+            _ => None,
+        }
+    }
+}
+
+pub type Result<T> = std::result::Result<T, Error>;

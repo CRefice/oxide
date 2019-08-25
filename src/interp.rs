@@ -4,6 +4,7 @@ use std::fmt::{self, Display};
 use std::fs::File;
 use std::io::{self, Read as _};
 use std::path::Path;
+use std::rc::Rc;
 
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
@@ -59,57 +60,51 @@ impl std::error::Error for Error {
     }
 }
 
-pub struct Interpreter {
-    vm: VirtualMachine,
+pub fn run_file<P: AsRef<Path>>(path: P) -> Result<()> {
+    let mut text = String::new();
+    let mut file = File::open(path.as_ref())?;
+    file.read_to_string(&mut text)?;
+    let mut compiler = Compiler::new();
+    let mut scanner = Scanner::new(&text).peekable();
+    compiler.program(&mut scanner)?;
+    let chunk = compiler.instructions();
+    let mut vm = VirtualMachine::new(Rc::new(chunk));
+    libs::load_libraries(&mut vm);
+    vm.run()?;
+    Ok(())
 }
 
-impl Interpreter {
-    pub fn new() -> Self {
-        let mut vm = VirtualMachine::new();
-        libs::load_libraries(&mut vm);
-        Interpreter { vm }
-    }
-
-    pub fn run_file<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
-        let mut text = String::new();
-        let mut file = File::open(path.as_ref())?;
-        file.read_to_string(&mut text)?;
-        let mut compiler = Compiler::new();
-        let mut scanner = Scanner::new(&text).peekable();
-        compiler.program(&mut scanner)?;
-        self.vm.run(compiler.instructions())?;
-        Ok(())
-    }
-
-    pub fn repl(&mut self) {
-        let mut rl = Editor::<()>::new();
-        let mut compiler = Compiler::new();
-        loop {
-            let readline = rl.readline(">> ");
-            match readline {
-                Ok(line) => {
-                    let line = line.as_str();
-                    rl.add_history_entry(line);
-                    match self.run_line(line, &mut compiler) {
-                        Ok(val) => println!("{}", val),
-                        Err(err) => println!("{}", err),
-                    }
+pub fn repl() {
+    let mut rl = Editor::<()>::new();
+    let mut compiler = Compiler::new();
+    let mut vm = VirtualMachine::new(Rc::new(Vec::new()));
+    loop {
+        let readline = rl.readline(">> ");
+        match readline {
+            Ok(line) => {
+                let line = line.as_str();
+                rl.add_history_entry(line);
+                match run_line(line, &mut compiler, &mut vm) {
+                    Ok(val) => println!("{}", val),
+                    Err(err) => println!("{}", err),
                 }
-                Err(ReadlineError::Interrupted) | Err(ReadlineError::Eof) => {
-                    break;
-                }
-                Err(err) => {
-                    println!("Error: {:?}", err);
-                    break;
-                }
+            }
+            Err(ReadlineError::Interrupted) | Err(ReadlineError::Eof) => {
+                break;
+            }
+            Err(err) => {
+                println!("Error: {:?}", err);
+                break;
             }
         }
     }
+}
 
-    fn run_line(&mut self, text: &str, compiler: &mut Compiler) -> Result<Value> {
-        let mut scanner = Scanner::new(text).peekable();
-        compiler.declaration(&mut scanner)?;
-        self.vm.run(compiler.instructions())?;
-        Ok(self.vm.pop()?)
-    }
+fn run_line(text: &str, compiler: &mut Compiler, vm: &mut VirtualMachine) -> Result<Value> {
+    let mut scanner = Scanner::new(text).peekable();
+    compiler.declaration(&mut scanner)?;
+    let chunk = Rc::new(compiler.instructions());
+    vm.change_chunk(chunk);
+    vm.run()?;
+    Ok(vm.pop()?)
 }

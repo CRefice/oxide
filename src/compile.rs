@@ -2,6 +2,7 @@ use std::convert::TryInto;
 use std::fmt::{self, Display};
 use std::iter::Peekable;
 use std::num::TryFromIntError;
+use std::rc::Rc;
 
 use crate::scan::{self, Token, TokenType, TokenType::*};
 use crate::vm::{Instruction, Value};
@@ -38,14 +39,20 @@ where
 
 impl Compiler {
     pub fn new() -> Self {
+        let vm_owned = VarDecl {
+            name: String::new(),
+            index: 0,
+        };
         Compiler {
-            locals: Vec::new(),
+            locals: vec![vm_owned],
             instrs: Vec::new(),
         }
     }
 
-    pub fn instructions(&self) -> &[Instruction] {
-        &self.instrs
+    pub fn instructions(&mut self) -> Vec<Instruction> {
+        let mut chunk = Vec::new();
+        std::mem::swap(&mut chunk, &mut self.instrs);
+        chunk
     }
 
     fn emit(&mut self, instr: Instruction) {
@@ -494,14 +501,18 @@ impl Compiler {
     where
         I: Iterator<Item = ScanResult>,
     {
+        let mut fn_compiler = Compiler::new();
+        let function = fn_compiler.function(it)?;
+        self.emit(Instruction::Push(function));
+        Ok(())
+    }
+
+    fn function<I>(&mut self, it: &mut Peekable<I>) -> Result<Value>
+    where
+        I: Iterator<Item = ScanResult>,
+    {
         advance(it)?; // Skip Fn
-
-        let mut fn_locals = Vec::new();
-        std::mem::swap(&mut self.locals, &mut fn_locals);
-
         let arity = self.params(it)?;
-        let jump_idx = self.stub_jump();
-        let code_loc = self.instrs.len();
 
         match peek(it)? {
             Some(Arrow) => {
@@ -522,12 +533,11 @@ impl Compiler {
         };
         self.emit(Instruction::PopFrame(self.locals.len().try_into()?));
         self.emit(Instruction::Ret);
-
-        self.patch_jump(jump_idx, self.instrs.len() - 1, Instruction::Jump)?;
-        self.emit(Instruction::Push(Value::Function { code_loc, arity }));
-
-        std::mem::swap(&mut self.locals, &mut fn_locals);
-        Ok(())
+        Ok(Value::Function {
+            chunk: Rc::new(self.instructions()),
+            arity,
+            name: None,
+        })
     }
 
     fn params<I>(&mut self, it: &mut Peekable<I>) -> Result<usize>
@@ -625,9 +635,10 @@ impl From<scan::Error> for Error {
 }
 
 fn human_readable_fmt<T: Display>(slice: &[T], f: &mut fmt::Formatter) -> fmt::Result {
-    match slice.len() {
-        0 => write!(f, "nothing"),
-        1 => write!(f, "'{}'", slice[0].to_string()),
+    match slice {
+        [] => write!(f, "nothing"),
+        [x] => write!(f, "'{}'", x),
+        [x, y] => write!(f, "'{}' or '{}'", x, y),
         _ => {
             let (last, rest) = slice.split_last().unwrap();
             let (first, middle) = rest.split_first().unwrap();

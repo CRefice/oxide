@@ -3,6 +3,8 @@ use std::fmt::{self, Debug, Display};
 use std::ops::*;
 use std::rc::Rc;
 
+use crate::vm::Chunk;
+
 #[derive(Clone)]
 pub enum Value {
     Null,
@@ -10,11 +12,12 @@ pub enum Value {
     Str(String),
     Bool(bool),
     Function {
-        code_loc: usize,
+        chunk: Chunk,
+        name: Option<String>,
         arity: usize,
     },
     NativeFn {
-        f: Rc<dyn Fn(&[Value]) -> Value>,
+        f: Rc<dyn Fn(&[Value]) -> Result<Value>>,
         arity: usize,
     },
 }
@@ -56,7 +59,9 @@ impl Display for Value {
             Value::Num(x) => write!(f, "{}", x),
             Value::Str(s) => write!(f, "{}", s),
             Value::Bool(b) => write!(f, "{}", b),
-            Value::Function { .. } => write!(f, "fn"),
+            Value::Function { name, .. } => {
+                write!(f, "fn {}", name.as_ref().map_or("(anonymous)", |x| &**x))
+            }
             Value::NativeFn { .. } => write!(f, "native fn"),
         }
     }
@@ -69,10 +74,10 @@ impl Debug for Value {
             Value::Num(x) => write!(f, "Num({})", x),
             Value::Str(s) => write!(f, "Str({})", s),
             Value::Bool(b) => write!(f, "Bool({})", b),
-            Value::Function { code_loc, arity } => write!(
+            Value::Function { chunk, name, arity } => write!(
                 f,
-                "Function {{ code_loc = {}, arity = {}, }}",
-                code_loc, arity
+                "Function {{ chunk = {:?}, name = {:?}, arity = {:?}, }}",
+                chunk, name, arity
             ),
             Value::NativeFn { .. } => write!(f, "NativeFn(..)"),
         }
@@ -151,16 +156,6 @@ impl PartialEq for Value {
             (Value::Num(a), Value::Num(b)) => a == b,
             (Value::Str(a), Value::Str(b)) => a == b,
             (Value::Bool(a), Value::Bool(b)) => a == b,
-            (
-                Value::Function {
-                    code_loc: loc_a,
-                    arity: arity_a,
-                },
-                Value::Function {
-                    code_loc: loc_b,
-                    arity: arity_b,
-                },
-            ) => (loc_a, arity_a) == (loc_b, arity_b),
             _ => false,
         }
     }
