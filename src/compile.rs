@@ -590,7 +590,10 @@ impl Compiler {
         let mut argc = 0;
         advance(it)?; //Skip LeftParen
         match peek(it)? {
-            Some(RightParen) => Ok(argc),
+            Some(RightParen) => {
+                advance(it)?;
+                Ok(argc)
+            }
             _ => {
                 self.expression(it)?;
                 argc += 1;

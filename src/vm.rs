@@ -187,6 +187,7 @@ impl VirtualMachine {
                         let begin = self.stack.len() - arity;
                         let result = f(&self.stack[begin..])?;
                         self.stack.drain(begin..);
+                        self.stack.pop(); // Function object
                         self.stack.push(result);
                         Ok(())
                     }
