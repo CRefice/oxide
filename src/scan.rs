@@ -64,7 +64,7 @@ impl Display for TokenType {
                 Plus => "+",
                 Slash => "/",
                 Star => "*",
-                Arrow => "=>",
+                Arrow => "->",
                 LeftParen => "(",
                 RightParen => ")",
                 LeftBracket => "{",
@@ -196,7 +196,13 @@ impl<'a> Iterator for Scanner<'a> {
                 '"' => self.str_literal(),
                 '+' => Ok(Plus),
                 ',' => Ok(Comma),
-                '-' => Ok(Minus),
+                '-' => match self.peek() {
+                    Some('>') => {
+                        self.advance(1);
+                        Ok(Arrow)
+                    }
+                    _ => Ok(Minus),
+                },
                 '*' => Ok(Star),
                 '/' => match self.peek() {
                     Some('/') => {
@@ -213,10 +219,6 @@ impl<'a> Iterator for Scanner<'a> {
                     Some('=') => {
                         self.advance(1);
                         Ok(EqualEqual)
-                    }
-                    Some('>') => {
-                        self.advance(1);
-                        Ok(Arrow)
                     }
                     _ => Ok(Equal),
                 },

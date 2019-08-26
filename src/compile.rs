@@ -501,17 +501,28 @@ impl Compiler {
     where
         I: Iterator<Item = ScanResult>,
     {
+        advance(it)?; // Skip Fn
+        let name = if let Some(Identifier(name)) = peek(it)? {
+            let name = name.to_owned();
+            advance(it)?;
+            Some(name)
+        } else {
+            None
+        };
+
         let mut fn_compiler = Compiler::new();
-        let function = fn_compiler.function(it)?;
+        let function = fn_compiler.function(name.clone(), it)?;
         self.emit(Instruction::Push(function));
+        if let Some(name) = name {
+            self.emit(Instruction::SetGlobal(name));
+        }
         Ok(())
     }
 
-    fn function<I>(&mut self, it: &mut Peekable<I>) -> Result<Value>
+    fn function<I>(&mut self, name: Option<String>, it: &mut Peekable<I>) -> Result<Value>
     where
         I: Iterator<Item = ScanResult>,
     {
-        advance(it)?; // Skip Fn
         let arity = self.params(it)?;
 
         match peek(it)? {
@@ -536,7 +547,7 @@ impl Compiler {
         Ok(Value::Function {
             chunk: Rc::new(self.instructions()),
             arity,
-            name: None,
+            name,
         })
     }
 
