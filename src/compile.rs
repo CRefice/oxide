@@ -277,7 +277,7 @@ impl Compiler {
         I: Iterator<Item = ScanResult>,
     {
         self.primary(it)?;
-        if let Some(LeftParen) = peek(it)? {
+        while let Some(LeftParen) = peek(it)? {
             let argc = self.args(it)?;
             self.emit(Instruction::Call(argc));
         }
