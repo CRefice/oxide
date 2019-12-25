@@ -17,7 +17,9 @@ pub enum Instruction {
     GetGlobal(String),
     SetGlobal(String),
     Pop,
-    PopFrame(u16),
+    // Dumb hacks
+    SaveReturn,
+    RestoreReturn,
     Jump(i16),
     JumpIfFalse(i16),
     JumpIfTrue(i16),
@@ -69,6 +71,7 @@ struct Frame {
 pub struct VirtualMachine {
     globals: HashMap<String, Value>,
     stack: Vec<Value>,
+    ret_channel: Option<Value>,
     frames: Vec<Frame>,
     loc: CodeLocation,
 }
@@ -78,6 +81,7 @@ impl VirtualMachine {
         VirtualMachine {
             globals: HashMap::new(),
             stack: vec![Value::Null],
+            ret_channel: None,
             frames: Vec::new(),
             loc: CodeLocation::new(chunk),
         }
@@ -105,16 +109,19 @@ impl VirtualMachine {
         self.loc.ip += 1;
         match opcode {
             Instruction::Push(val) => {
-                self.stack.push(val.clone());
+                self.stack.push(val);
                 Ok(())
             }
             Instruction::Pop => self.pop().map(|_| ()),
-            Instruction::PopFrame(n) => {
+            Instruction::SaveReturn => {
                 let top = self.pop()?;
-                for _ in 0..n {
-                    self.pop()?;
-                }
-                self.stack.push(top);
+                self.ret_channel.replace(top);
+                Ok(())
+            }
+            Instruction::RestoreReturn => {
+                let ret = self.ret_channel.take();
+                let ret_val = ret.ok_or_else(|| Error::NoReturnValue)?;
+                self.stack.push(ret_val);
                 Ok(())
             }
             Instruction::GetGlobal(name) => {
@@ -128,7 +135,7 @@ impl VirtualMachine {
             }
             Instruction::SetGlobal(name) => {
                 let val = self.peek()?;
-                self.globals.insert(name.clone(), val);
+                self.globals.insert(name, val);
                 Ok(())
             }
             Instruction::GetLocal(idx) => {
@@ -295,6 +302,7 @@ pub enum Error {
     UndeclaredGlobal(String),
     WrongArgCount { expected: usize, found: u16 },
     EmptyStack,
+    NoReturnValue,
 }
 
 impl From<ValueError> for Error {
@@ -321,6 +329,7 @@ impl Display for Error {
                 expected, found
             ),
             Error::EmptyStack => write!(f, "Cannot return value out of an empty stack"),
+            Error::NoReturnValue => write!(f, "Tried restoring value from empty return channel"),
         }
     }
 }

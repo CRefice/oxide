@@ -89,6 +89,16 @@ impl Compiler {
         Ok(())
     }
 
+    fn close_scope(&mut self, num_locals: usize) {
+        self.emit(Instruction::SaveReturn);
+        let final_len = self.locals.len().saturating_sub(num_locals);
+        for _ in 0..num_locals {
+            self.emit(Instruction::Pop);
+        }
+        self.emit(Instruction::RestoreReturn);
+        self.locals.truncate(final_len);
+    }
+
     pub fn program<I>(&mut self, it: &mut Peekable<I>) -> Result<()>
     where
         I: Iterator<Item = ScanResult>,
@@ -125,16 +135,12 @@ impl Compiler {
         I: Iterator<Item = ScanResult>,
     {
         self.and(it)?;
-        loop {
-            if let Some(Or) = peek(it)? {
-                advance(it)?;
-                let jump_idx = self.stub_jump();
-                self.emit(Instruction::Pop);
-                self.and(it)?;
-                self.patch_jump(jump_idx, self.instrs.len() - 1, Instruction::JumpIfTrue)?;
-            } else {
-                break;
-            }
+        while let Some(Or) = peek(it)? {
+            advance(it)?;
+            let jump_idx = self.stub_jump();
+            self.emit(Instruction::Pop);
+            self.and(it)?;
+            self.patch_jump(jump_idx, self.instrs.len() - 1, Instruction::JumpIfTrue)?;
         }
         Ok(())
     }
@@ -144,16 +150,12 @@ impl Compiler {
         I: Iterator<Item = ScanResult>,
     {
         self.equality(it)?;
-        loop {
-            if let Some(And) = peek(it)? {
-                advance(it)?;
-                let jump_idx = self.stub_jump();
-                self.emit(Instruction::Pop);
-                self.equality(it)?;
-                self.patch_jump(jump_idx, self.instrs.len() - 1, Instruction::JumpIfFalse)?;
-            } else {
-                break;
-            }
+        while let Some(And) = peek(it)? {
+            advance(it)?;
+            let jump_idx = self.stub_jump();
+            self.emit(Instruction::Pop);
+            self.equality(it)?;
+            self.patch_jump(jump_idx, self.instrs.len() - 1, Instruction::JumpIfFalse)?;
         }
         Ok(())
     }
@@ -163,17 +165,12 @@ impl Compiler {
         I: Iterator<Item = ScanResult>,
     {
         self.comparison(it)?;
-        loop {
-            match peek(it)? {
-                Some(EqualEqual) | Some(BangEqual) => {
-                    let op = advance(it)?;
-                    self.comparison(it)?;
-                    self.emit(Instruction::Equal);
-                    if let BangEqual = op.ttype {
-                        self.emit(Instruction::Not);
-                    }
-                }
-                _ => break,
+        while let Some(EqualEqual) | Some(BangEqual) = peek(it)? {
+            let op = advance(it)?;
+            self.comparison(it)?;
+            self.emit(Instruction::Equal);
+            if let BangEqual = op.ttype {
+                self.emit(Instruction::Not);
             }
         }
         Ok(())
@@ -213,18 +210,13 @@ impl Compiler {
         I: Iterator<Item = ScanResult>,
     {
         self.multiplication(it)?;
-        loop {
-            match peek(it)? {
-                Some(Plus) | Some(Minus) => {
-                    let op = advance(it)?;
-                    self.multiplication(it)?;
-                    match op.ttype {
-                        Plus => self.emit(Instruction::Add),
-                        Minus => self.emit(Instruction::Sub),
-                        _ => unreachable!(),
-                    }
-                }
-                _ => break,
+        while let Some(Plus) | Some(Minus) = peek(it)? {
+            let op = advance(it)?;
+            self.multiplication(it)?;
+            match op.ttype {
+                Plus => self.emit(Instruction::Add),
+                Minus => self.emit(Instruction::Sub),
+                _ => unreachable!(),
             }
         }
         Ok(())
@@ -235,18 +227,13 @@ impl Compiler {
         I: Iterator<Item = ScanResult>,
     {
         self.unary(it)?;
-        loop {
-            match peek(it)? {
-                Some(Star) | Some(Slash) => {
-                    let op = advance(it)?;
-                    self.unary(it)?;
-                    match op.ttype {
-                        Star => self.emit(Instruction::Mul),
-                        Slash => self.emit(Instruction::Div),
-                        _ => unreachable!(),
-                    }
-                }
-                _ => break,
+        while let Some(Star) | Some(Slash) = peek(it)? {
+            let op = advance(it)?;
+            self.unary(it)?;
+            match op.ttype {
+                Star => self.emit(Instruction::Mul),
+                Slash => self.emit(Instruction::Div),
+                _ => unreachable!(),
             }
         }
         Ok(())
@@ -352,9 +339,7 @@ impl Compiler {
                 self.emit(Instruction::Pop);
             }
         }
-        let frame_len = self.locals.len() - frame_start;
-        self.emit(Instruction::PopFrame(frame_len.try_into()?));
-        self.locals.drain(frame_start..);
+        self.close_scope(self.locals.len() - frame_start);
         Ok(())
     }
 
@@ -542,7 +527,7 @@ impl Compiler {
                 return Err(Error::EndOfInput);
             }
         };
-        self.emit(Instruction::PopFrame(self.locals.len().try_into()?));
+        self.close_scope(self.locals.len());
         self.emit(Instruction::Ret);
         Ok(Value::Function {
             chunk: Rc::new(self.instructions()),
