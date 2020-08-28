@@ -1,13 +1,8 @@
 use std::fmt::{self, Display};
 use std::num::ParseFloatError;
 
+use crate::loc::{Locate, SourceLocation};
 use crate::vm::Value;
-
-#[derive(Debug, Clone, Copy)]
-pub struct Span {
-    pub pos: usize,
-    pub len: usize,
-}
 
 #[derive(Debug)]
 pub enum TokenType {
@@ -89,17 +84,17 @@ impl Display for TokenType {
 #[derive(Debug)]
 pub struct Token {
     pub ttype: TokenType,
-    pub span: Span,
+    pub loc: SourceLocation,
 }
 
-pub struct Scanner<'a> {
+pub struct TokenStream<'a> {
     unread: &'a str,
     pos: usize,
 }
 
-impl<'a> Scanner<'a> {
+impl<'a> TokenStream<'a> {
     pub fn new(s: &'a str) -> Self {
-        Scanner { unread: s, pos: 0 }
+        TokenStream { unread: s, pos: 0 }
     }
 
     fn peek(&self) -> Option<char> {
@@ -127,34 +122,51 @@ impl<'a> Scanner<'a> {
         self.advance(i)
     }
 
-    fn num_literal(&mut self) -> Result<TokenType> {
+    fn num_literal(&mut self) -> std::result::Result<TokenType, ErrorKind> {
         let s = self.unread;
-        let pos = self.pos;
+        let offset = self.pos;
         self.advance_while(char::is_numeric);
         if let Some('.') = self.peek() {
             self.advance(1);
             self.advance_while(char::is_numeric);
         }
-        let len = self.pos - pos;
-        let span = Span { pos, len };
-        let num = s[..len]
+        let len = self.pos - offset;
+        s[..len]
             .parse::<f64>()
-            .map_err(|cause| Error::ParseNum { cause, span })?;
-        Ok(Literal(Value::Num(num)))
+            .map(|num| Literal(Value::Num(num)))
+            .map_err(ErrorKind::ParseNum)
     }
 
-    fn str_literal(&mut self) -> Result<TokenType> {
+    fn str_literal(&mut self) -> std::result::Result<TokenType, ErrorKind> {
         let s = self.unread;
-        let pos = self.pos;
+        let offset = self.pos;
         self.advance_while(|c| c != '"');
-        let len = self.pos - pos;
         if let Some('"') = self.peek() {
-            let s = &s[..len];
             self.advance(1);
+            let len = self.pos - offset;
+            let s = &s[..len];
             Ok(Literal(Value::Str(s.to_owned())))
         } else {
-            let span = Span { pos, len };
-            Err(Error::UnclosedQuote { span })
+            Err(ErrorKind::UnmatchedQuote)
+        }
+    }
+
+    fn skip_block_comment(&mut self) -> std::result::Result<(), ErrorKind> {
+        let offset = self.pos;
+        loop {
+            self.advance_while(|c| c != '*');
+            match self.peek() {
+                Some(x) => {
+                    self.advance(1);
+                    if x == '/' {
+                        self.advance(1);
+                        return Ok(());
+                    }
+                }
+                None => {
+                    return Err(ErrorKind::UnmatchedComment);
+                }
+            }
         }
     }
 }
@@ -178,12 +190,12 @@ fn keyword(s: &str) -> Option<TokenType> {
     }
 }
 
-impl<'a> Iterator for Scanner<'a> {
+impl<'a> Iterator for TokenStream<'a> {
     type Item = Result<Token>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.advance_while(char::is_whitespace);
-        let pos = self.pos;
+        let offset = self.pos;
         let c = self.peek()?;
         let result = if c.is_numeric() {
             self.num_literal()
@@ -208,6 +220,13 @@ impl<'a> Iterator for Scanner<'a> {
                     Some('/') => {
                         self.advance_while(|c| c != '\n');
                         return self.next();
+                    }
+                    Some('*') => {
+                        self.advance(1);
+                        match self.skip_block_comment() {
+                            Ok(()) => return self.next(),
+                            Err(e) => Err(e),
+                        }
                     }
                     _ => Ok(Slash),
                 },
@@ -243,40 +262,54 @@ impl<'a> Iterator for Scanner<'a> {
                     }
                     _ => Ok(Less),
                 },
-                c => {
-                    let len = self.pos - pos;
-                    let span = Span { pos, len };
-                    Err(Error::Unrecognized { c, span })
-                }
+                c => Err(ErrorKind::Unrecognized(c)),
             }
         };
-        let len = self.pos - pos;
-        let span = Span { pos, len };
-        Some(result.map(|ttype| Token { ttype, span }))
+        let len = self.pos - offset;
+        let loc = SourceLocation { offset, len };
+        Some(
+            result
+                .map(|ttype| Token { ttype, loc })
+                .map_err(|kind| Error { kind, loc }),
+        )
     }
 }
 
 #[derive(Debug, Clone)]
-pub enum Error {
-    UnclosedQuote { span: Span },
-    ParseNum { cause: ParseFloatError, span: Span },
-    Unrecognized { c: char, span: Span },
+pub enum ErrorKind {
+    UnmatchedQuote,
+    UnmatchedComment,
+    ParseNum(ParseFloatError),
+    Unrecognized(char),
+}
+
+#[derive(Debug, Clone)]
+pub struct Error {
+    kind: ErrorKind,
+    loc: SourceLocation,
+}
+
+impl Locate for Error {
+    fn location(&self) -> SourceLocation {
+        self.loc
+    }
 }
 
 impl Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Error::UnclosedQuote { .. } => write!(f, "Unmatched opening quote"),
-            Error::ParseNum { cause, .. } => write!(f, "Unable to parse number: {}", cause),
-            Error::Unrecognized { c, .. } => write!(f, "Invalid token '{}'", c),
+        match &self.kind {
+            ErrorKind::UnmatchedQuote => write!(f, "Unmatched quote"),
+            ErrorKind::UnmatchedComment => write!(f, "Unterminated block comment"),
+            ErrorKind::ParseNum(cause) => write!(f, "Unable to parse number: {}", cause),
+            ErrorKind::Unrecognized(c) => write!(f, "Invalid token '{}'", c),
         }
     }
 }
 
 impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Error::ParseNum { cause, .. } => Some(cause),
+        match &self.kind {
+            ErrorKind::ParseNum(cause) => Some(cause),
             _ => None,
         }
     }

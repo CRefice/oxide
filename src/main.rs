@@ -1,5 +1,6 @@
 mod compile;
 mod interp;
+mod loc;
 mod scan;
 mod vm;
 

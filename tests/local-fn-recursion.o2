@@ -1,0 +1,3 @@
+let recursive = fn(n) -> if not n then 0 else recursive(n-1)
+
+print(recursive(10))

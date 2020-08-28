@@ -1,0 +1,10 @@
+fn outer() {
+	let a = 5
+	fn inner() {
+		a = a + 10
+		a
+	}
+	inner
+}
+
+print(outer()())

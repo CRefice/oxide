@@ -1,0 +1,18 @@
+fn fac(x) -> if x > 1 then x * fac(x-1) else 1
+
+fn fib(n) {
+	let a = 0
+	let b = 1
+	while n != 0 {
+		n = n - 1
+		let tmp = a
+		a = b
+		b = b + tmp
+	}
+	a
+}
+
+print(fac(10))
+
+let n = 10
+print("fib(" + n + ") = " + fib(n))
