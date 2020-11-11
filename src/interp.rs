@@ -32,6 +32,7 @@ pub fn repl() {
     let mut rl = Editor::<()>::new();
     let mut compiler = Compiler::new();
     let mut vm = VirtualMachine::new(Rc::new(Vec::new()));
+    libs::load_libraries(&mut vm);
     loop {
         let readline = rl.readline(">> ");
         match readline {
@@ -73,9 +74,9 @@ pub enum Error {
 impl TryLocate for Error {
     fn maybe_location(&self) -> Option<SourceLocation> {
         match self {
-            Error::IO(err) => None,
+            Error::IO(_) => None,
             Error::Compilation(err) => err.maybe_location(),
-            Error::Runtime(err) => None,
+            Error::Runtime(_) => None,
         }
     }
 }

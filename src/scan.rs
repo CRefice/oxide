@@ -142,8 +142,8 @@ impl<'a> TokenStream<'a> {
         let offset = self.pos;
         self.advance_while(|c| c != '"');
         if let Some('"') = self.peek() {
-            self.advance(1);
             let len = self.pos - offset;
+            self.advance(1);
             let s = &s[..len];
             Ok(Literal(Value::Str(s.to_owned())))
         } else {
@@ -152,7 +152,6 @@ impl<'a> TokenStream<'a> {
     }
 
     fn skip_block_comment(&mut self) -> std::result::Result<(), ErrorKind> {
-        let offset = self.pos;
         loop {
             self.advance_while(|c| c != '*');
             match self.peek() {

@@ -89,7 +89,9 @@ impl Compiler {
         dst: usize,
         f: impl FnOnce(i16) -> Instruction,
     ) -> Result<()> {
-        let offset = (dst - src).try_into()?;
+        let offset = (dst - src)
+            .try_into()
+            .expect("Loop code too big to fit into VM register");
         self.instrs[src] = f(offset);
         Ok(())
     }
@@ -362,15 +364,18 @@ impl Compiler {
         advance(it)?; // Skip Let
         let found = advance(it)?;
         if let Identifier(ident) = found.ttype {
-            let found = advance(it)?;
-            if let Equal = found.ttype {
+            let next = advance(it)?;
+            if let Equal = next.ttype {
                 self.expression(it)?;
-                let idx = self.declare_local(ident)?;
+                let idx = self.declare_local(ident, found.loc)?;
                 self.emit(Instruction::GetLocal(idx));
                 Ok(())
             } else {
                 let expected = vec![Equal];
-                Err(Error::Mismatch { expected, found })
+                Err(Error::Mismatch {
+                    expected,
+                    found: next,
+                })
             }
         } else {
             let expected = vec![Identifier(String::new())];
@@ -486,7 +491,9 @@ impl Compiler {
             let found = advance(it)?;
             return Err(Error::Mismatch { expected, found });
         }
-        let loop_len: i16 = (self.instrs.len() - (loop_idx - 1)).try_into()?;
+        let loop_len: i16 = (self.instrs.len() - (loop_idx - 1))
+            .try_into()
+            .expect("Loop code too big to fit into VM register");
         self.emit(Instruction::Jump(-loop_len));
         self.patch_jump(jump_idx, self.instrs.len() - 1, Instruction::JumpIfFalse)?;
         // Pop the condition value (If jump taken)
@@ -559,13 +566,13 @@ impl Compiler {
             match found.ttype {
                 RightParen => Ok(arity),
                 Identifier(a) => {
-                    self.declare_local(a)?;
+                    self.declare_local(a, found.loc)?;
                     arity = 1;
                     while let Some(Comma) = peek(it)? {
                         advance(it)?;
                         let found = advance(it)?;
                         if let Identifier(a) = found.ttype {
-                            self.declare_local(a)?;
+                            self.declare_local(a, found.loc)?;
                             arity += 1;
                         } else {
                             let expected = vec![Identifier(String::new())];
