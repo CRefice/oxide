@@ -166,3 +166,5 @@ fn fib(n) {
 Note that there's no need to use a `return` keyword: just like loops (and every other "statement" in Oxide) functions evaluate to the last expression they execute.
 
 (Unfortunately, for now you also _can't_ use the `return` keyword to exit early from a function. This will be fixed in a future release.)
+
+Note that functions are values just like any other, meaning they can themselves be passed to other functions (yay for functional programming!)
